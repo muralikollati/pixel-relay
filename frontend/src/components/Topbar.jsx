@@ -138,7 +138,7 @@ export default function Topbar({ tab, setTab, onToast, user, onLogout, worker, d
         <Box sx={{ flex: 1 }} />
 
         {/* API status */}
-        <Chip size="small" label={online ? 'API ONLINE' : 'API OFFLINE'}
+        {/* <Chip size="small" label={online ? 'API ONLINE' : 'API OFFLINE'}
           sx={{ fontFamily: 'DM Mono, monospace', fontSize: 10, height: 26,
             bgcolor: online ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)',
             color: online ? '#10B981' : '#EF4444',
@@ -147,7 +147,7 @@ export default function Topbar({ tab, setTab, onToast, user, onLogout, worker, d
           icon={<Box sx={{ width: 6, height: 6, borderRadius: '50%', ml: '6px !important',
             bgcolor: online ? '#10B981' : '#EF4444',
             boxShadow: pulse && online ? '0 0 8px #10B981' : 'none', transition: 'box-shadow 0.4s' }} />}
-        />
+        /> */}
 
         {/* Run All / Stop All */}
         {canRun && !anyRunning && (
