@@ -1,0 +1,14 @@
+# Node
+node_modules/
+
+# Environment
+.env
+
+# SQLite database
+backend/data/
+*.db
+*.db-wal
+*.db-shm
+
+# Mac
+.DS_Store
