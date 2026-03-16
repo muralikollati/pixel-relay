@@ -77,6 +77,7 @@ db.exec(`
     success_rate     REAL    NOT NULL DEFAULT 0,
     spam_rescued     INTEGER NOT NULL DEFAULT 0,
     started_at       TEXT,
+    stopped_early    INTEGER NOT NULL DEFAULT 0,
     finished_at      TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE INDEX IF NOT EXISTS idx_rh_email ON run_history(email);
@@ -157,6 +158,16 @@ for (const [role, perms] of Object.entries(DEFAULT_PERMS))
     `);
     console.log('[DB] account_requests migration complete.');
   }
+
+  // Migration 2: run_history — add stopped_early column
+  (function() {
+    const rhCols = db.prepare("PRAGMA table_info(run_history)").all().map(c => c.name);
+    if (!rhCols.includes('stopped_early')) {
+      console.log('[DB] Migrating run_history: adding stopped_early column...');
+      db.exec("ALTER TABLE run_history ADD COLUMN stopped_early INTEGER NOT NULL DEFAULT 0");
+      console.log('[DB] run_history migration complete.');
+    }
+  })();
 })();
 
 // Encryption

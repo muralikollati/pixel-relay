@@ -85,8 +85,20 @@ app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Skip logging for high-frequency polling routes to avoid log spam
+const SILENT_ROUTES = new Set([
+  '/worker/activity',
+  '/worker/activity/my',
+  '/worker/stats',
+  '/worker/stop-poll',
+  '/account-requests/pending-count',
+  '/users/me',
+  '/health',
+]);
 app.use((req, res, next) => {
-  logger.info(`${req.method} ${req.path}`);
+  if (!SILENT_ROUTES.has(req.path)) {
+    logger.info(`${req.method} ${req.path}`);
+  }
   next();
 });
 

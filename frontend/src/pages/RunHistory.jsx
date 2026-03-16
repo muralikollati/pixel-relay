@@ -56,7 +56,7 @@ export default function RunHistory({ data }) {
 
   const rows = Object.entries(history)
     .filter(([email]) => selectedEmail === 'all' || email === selectedEmail)
-    .flatMap(([email, runs]) => runs.map(r => ({ ...r, email })))
+    .flatMap(([email, runs]) => (Array.isArray(runs) ? runs : []).map(r => ({ ...r, email })))
     .sort((a, b) => new Date(b.finishedAt) - new Date(a.finishedAt));
 
   // Per-account summary stats
@@ -142,8 +142,8 @@ export default function RunHistory({ data }) {
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    {['Account', 'Finished', 'Duration', 'Emails', 'Beacons', 'Rate', 'Spam rescued', ''].map(h => (
-                      <TableCell key={h} sx={{ color: 'text.disabled', fontSize: 10, fontFamily: 'DM Mono, monospace', py: 1, whiteSpace: 'nowrap' }}>{h}</TableCell>
+                    {['Account', 'Finished', 'Duration', 'Emails', 'Beacons', 'Rate', 'Spam rescued', ''].map((col, i) => (
+                      <TableCell key={col || i} sx={{ color: 'text.disabled', fontSize: 10, fontFamily: 'DM Mono, monospace', py: 1, whiteSpace: 'nowrap' }}>{col}</TableCell>
                     ))}
                   </TableRow>
                 </TableHead>
