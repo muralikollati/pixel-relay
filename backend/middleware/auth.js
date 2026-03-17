@@ -1,183 +1,135 @@
 /**
- * Gmail OAuth Routes
+ * JWT Auth Middleware
  *
- * POST /auth/google/init       — generate consent URL, encode username in state param
- * GET  /auth/google/callback   — exchange code, read owner from state (no cookie dependency)
- * GET  /auth/accounts          — list approved accounts for current user
- * DELETE /auth/accounts/:email — disconnect account
- * PATCH  /auth/accounts/:email/status — pause / resume
+ * generateToken      — sign a JWT for a user
+ * requireAuth        — any logged-in user (attaches req.user with live permissions)
+ * requireRole(roles) — specific role(s) only
+ * requirePermission  — checks live permission from UserStore
+ * revokeToken        — add a token to the denylist on logout
+ *
+ * Token denylist: revoked JWTs are stored in SQLite and mirrored in-memory.
+ * DB is initialised lazily on first request to avoid circular-require crashes
+ * (db.js loads services that load middleware/auth before db.js finishes exporting).
  */
 
-const express    = require('express');
-const router     = express.Router();
-const { getAuthUrl, exchangeCode } = require('../services/googleAuth');
-const TokenStore = require('../services/tokenStore');
-const AccountRequestStore = require('../services/accountRequestStore');
-const logger     = require('../services/logger');
-const { requireAuth, requirePermission } = require('../middleware/auth');
-const UserStore   = require('../services/userStore');
-const crypto     = require('crypto');
+const jwt       = require('jsonwebtoken');
+const UserStore = require('../services/userStore');
 
-// Simple signing so the state can't be forged (username:sig)
-const STATE_SECRET = process.env.JWT_SECRET || 'pixelrelay-secret-change-in-production';
-
-function signState(username) {
-  const sig = crypto.createHmac('sha256', STATE_SECRET).update(username).digest('hex').slice(0, 16);
-  return Buffer.from(`${username}:${sig}`).toString('base64url');
+const SECRET = process.env.JWT_SECRET || 'pixelrelay-secret-change-in-production';
+if (process.env.NODE_ENV === 'production' && SECRET === 'pixelrelay-secret-change-in-production') {
+  console.error('[Auth] FATAL: JWT_SECRET not set in production. Set JWT_SECRET env variable.');
+  process.exit(1);
 }
 
-function verifyState(state) {
+// ── Token denylist ─────────────────────────────────────────────────────────────
+// Lazy-initialised on first request — never touches db at module-load time.
+// This prevents the circular-require crash:
+//   db.js → services/* → middleware/auth → db (not yet exported) → crash
+const revokedSet    = new Set();
+let   dbInitialised = false;
+
+function ensureDb() {
+  if (dbInitialised) return;
+  dbInitialised = true;
+
+  const { db } = require('../services/db');   // safe: all modules fully loaded by first request
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS revoked_tokens (
+      jti        TEXT PRIMARY KEY,
+      expires_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_revoked_exp ON revoked_tokens(expires_at);
+  `);
+
+  // Seed in-memory set from DB (skip already-expired tokens)
+  const rows = db.prepare('SELECT jti FROM revoked_tokens WHERE expires_at > ?')
+    .all(Math.floor(Date.now() / 1000));
+  for (const r of rows) revokedSet.add(r.jti);
+
+  // Purge expired tokens from DB + memory every 10 minutes
+  setInterval(() => {
+    const now     = Math.floor(Date.now() / 1000);
+    const expired = db.prepare('SELECT jti FROM revoked_tokens WHERE expires_at <= ?').all(now);
+    if (expired.length > 0) {
+      db.prepare('DELETE FROM revoked_tokens WHERE expires_at <= ?').run(now);
+      for (const { jti } of expired) revokedSet.delete(jti);
+    }
+  }, 10 * 60 * 1000);
+}
+
+function revokeToken(decoded) {
+  ensureDb();
+  const { db } = require('../services/db');
+  const jti = decoded.jti || `${decoded.username}:${decoded.iat}`;
+  revokedSet.add(jti);
+  db.prepare('INSERT OR IGNORE INTO revoked_tokens (jti, expires_at) VALUES (?, ?)')
+    .run(jti, decoded.exp);
+}
+
+function isRevoked(decoded) {
+  const jti = decoded.jti || `${decoded.username}:${decoded.iat}`;
+  return revokedSet.has(jti);
+}
+
+function generateToken(user) {
+  return jwt.sign(
+    { username: user.username, role: user.role },
+    SECRET,
+    { expiresIn: '7d' }
+  );
+}
+
+// requireAuth — verifies JWT, checks denylist, attaches live permissions to req.user
+async function requireAuth(req, res, next) {
+  ensureDb();
+  const header = req.headers.authorization;
+  if (!header || !header.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
   try {
-    if (!state) return null;
-    const decoded = Buffer.from(state, 'base64url').toString('utf8');
-    const colon   = decoded.lastIndexOf(':');
-    if (colon < 0) return null;
-    const username = decoded.slice(0, colon);
-    const sig      = decoded.slice(colon + 1);
-    const expected = crypto.createHmac('sha256', STATE_SECRET).update(username).digest('hex').slice(0, 16);
-    if (sig !== expected) return null;
-    return username;
-  } catch {
-    return null;
+    const token   = header.split(' ')[1];
+    const decoded = jwt.verify(token, SECRET);
+
+    if (isRevoked(decoded)) {
+      return res.status(401).json({ error: 'Token has been revoked' });
+    }
+
+    const user = UserStore.getUser(decoded.username);
+    if (!user) {
+      return res.status(401).json({ error: 'Account no longer exists', deleted: true });
+    }
+
+    req.user = {
+      ...decoded,
+      permissions: UserStore.getPermissions(decoded.role),
+    };
+
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: 'Invalid or expired token' });
   }
 }
 
-// POST /auth/google/init
-// requirePermission handles admin/superadmin bypass + live permission check for users
-router.post('/google/init', ...requirePermission('canConnectAccounts'), (req, res) => {
-  try {
-    // Encode username in the state param — survives the Google redirect regardless of browser/cookie
-    const state = signState(req.user.username);
-    const url   = getAuthUrl(state);
-    res.json({ success: true, url });
-  } catch (err) {
-    logger.error('Failed to generate auth URL', { error: err.message });
-    res.status(500).json({ success: false, error: 'Failed to start OAuth flow' });
-  }
-});
-
-// GET /auth/google/callback — called by Google after user grants consent
-router.get('/google/callback', async (req, res) => {
-  const { code, error, state } = req.query;
-
-  // FIX: Guard FRONTEND_URL — without it every redirect goes to "undefined/..."
-  // which the browser treats as a relative path and the frontend never sees the params.
-  const FRONTEND = process.env.FRONTEND_URL || 'http://localhost:5173';
-
-  if (error || !code) {
-    logger.warn('OAuth callback error', { error });
-    return res.redirect(`${FRONTEND}/?error=${encodeURIComponent(error || 'no_code')}`);
-  }
-
-  try {
-    const tokenData = await exchangeCode(code);
-    if (!tokenData.email) throw new Error('Could not retrieve email from Google');
-
-    // Recover the owner from the signed state param — fallback to 'admin' if missing/invalid
-    const owner = verifyState(state) || 'admin';
-    logger.info(`OAuth callback: email=${tokenData.email}, owner=${owner}`);
-
-    // If this Gmail is already an active approved account, just refresh its token
-    const existing = TokenStore.get(tokenData.email);
-    if (existing) {
-      TokenStore.save(tokenData.email, tokenData, existing.owner || owner);
-      logger.info(`Token refreshed: ${tokenData.email}`);
-      return res.redirect(`${FRONTEND}/?connected=${encodeURIComponent(tokenData.email)}`);
+function requireRole(...roles) {
+  return [requireAuth, (req, res, next) => {
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
     }
+    next();
+  }];
+}
 
-    // Check if the owner is admin/superadmin — if so, skip approval queue entirely
-    const ownerUser = UserStore.getUser(owner);
-    const ownerRole = ownerUser?.role || 'user';
-
-    // FIX #9: Enforce per-user account cap to prevent API quota abuse.
-    // Cap applies to all roles. Admins/superadmins see all accounts so their
-    // count is higher — we scope the check to their own owned accounts only.
-    const maxAccountsPerUser = require('../services/configStore').get().maxAccountsPerUser || 10;
-    const existingCount = TokenStore.getAll().filter(a => a.owner === owner).length;
-    if (existingCount >= maxAccountsPerUser) {
-      logger.warn(`Account cap reached for ${owner}: ${existingCount}/${maxAccountsPerUser}`);
-      return res.redirect(`${FRONTEND}/?error=account_limit_reached`);
+function requirePermission(permission) {
+  return [requireAuth, (req, res, next) => {
+    // Admin/superadmin bypass all permission gates
+    if (['admin', 'superadmin'].includes(req.user.role)) return next();
+    const perms = req.user.permissions;
+    if (!perms[permission]) {
+      return res.status(403).json({ error: `Permission denied: ${permission}` });
     }
+    next();
+  }];
+}
 
-    if (['admin', 'superadmin'].includes(ownerRole)) {
-      TokenStore.save(tokenData.email, tokenData, owner);
-      logger.info(`Account connected directly (admin): ${tokenData.email} (owner: ${owner})`);
-      return res.redirect(`${FRONTEND}/?connected=${encodeURIComponent(tokenData.email)}`);
-    }
-
-    // Regular user — create a pending request awaiting admin approval.
-    // FIX: Wrapped in its own try/catch so a DB error here redirects with a clear
-    // "request_create_failed" code instead of "token_exchange_failed" which wrongly
-    // implies something went wrong with Google — making the error very hard to diagnose.
-    try {
-      AccountRequestStore.create(tokenData.email, tokenData, owner);
-      logger.info(`Account request created: ${tokenData.email} (owner: ${owner})`);
-      return res.redirect(`${FRONTEND}/?pending=${encodeURIComponent(tokenData.email)}`);
-    } catch (storeErr) {
-      logger.error('Failed to create account request', { email: tokenData.email, error: storeErr.message });
-      return res.redirect(`${FRONTEND}/?error=request_create_failed`);
-    }
-
-  } catch (err) {
-    logger.error('OAuth callback failed', { error: err.message });
-    res.redirect(`${FRONTEND}/?error=token_exchange_failed`);
-  }
-});
-
-// GET /auth/accounts — list approved accounts visible to the current user
-router.get('/accounts', requireAuth, (req, res) => {
-  try {
-    const accounts = TokenStore.getAllForUser(req.user.username, req.user.role);
-    res.json({ success: true, accounts });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// DELETE /auth/accounts/:email — disconnect an account
-router.delete('/accounts/:email', ...requirePermission('canDeleteAccounts'), (req, res) => {
-  try {
-    const email = decodeURIComponent(req.params.email);
-
-    // Ownership check: users can only delete their own accounts
-    if (!['admin', 'superadmin'].includes(req.user.role)) {
-      const account = TokenStore.get(email);
-      if (!account || account.owner !== req.user.username) {
-        return res.status(403).json({ success: false, error: 'Not your account' });
-      }
-    }
-
-    TokenStore.remove(email);
-    AccountRequestStore.remove(email);
-    logger.info(`Account disconnected: ${email} by ${req.user.username}`);
-    res.json({ success: true, message: `${email} disconnected` });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// PATCH /auth/accounts/:email/status — pause or resume
-router.patch('/accounts/:email/status', ...requirePermission('canRunWorker'), (req, res) => {
-  try {
-    const email    = decodeURIComponent(req.params.email);
-    const { status } = req.body;
-    if (!['active', 'paused'].includes(status)) {
-      return res.status(400).json({ success: false, error: 'Invalid status. Use active or paused.' });
-    }
-
-    // Ownership check for users
-    if (!['admin', 'superadmin'].includes(req.user.role)) {
-      const account = TokenStore.get(email);
-      if (!account || account.owner !== req.user.username) {
-        return res.status(403).json({ success: false, error: 'Not your account' });
-      }
-    }
-
-    TokenStore.setStatus(email, status);
-    res.json({ success: true, email, status });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-module.exports = router;
+module.exports = { generateToken, requireAuth, requireRole, requirePermission, revokeToken };

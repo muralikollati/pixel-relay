@@ -12,3 +12,9 @@ backend/data/
 
 # Mac
 .DS_Store
+
+#build
+frontend/dist/
+
+# logs
+backend/logs/
