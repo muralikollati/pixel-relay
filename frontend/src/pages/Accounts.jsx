@@ -154,10 +154,10 @@ export default function Accounts({ data, refetch, onToast, worker, user, myActiv
                   </Typography>
 
                   {/* ── Action buttons ── */}
-                  <Box sx={{ display: 'flex', gap: 1 }}>
+                  {/* <Box sx={{ display: 'flex', gap: 1 }}> */}
 
                     {/* RUNNING → only Stop */}
-                    {running ? (
+                    {/* {running ? (
                       <Tooltip title="Stop after current batch">
                         <Button fullWidth size="small" variant="outlined" startIcon={<StopIcon />}
                           onClick={() => setStopTarget(a.email)}
@@ -165,12 +165,12 @@ export default function Accounts({ data, refetch, onToast, worker, user, myActiv
                             '&:hover': { borderColor: '#EF4444', bgcolor: 'rgba(239,68,68,0.08)' } }}>
                           Stop
                         </Button>
-                      </Tooltip>
-                    ) : (
-                      /* IDLE → Run + Pause/Resume + Delete */
+                      </Tooltip> */}
+                     {/* ) : ( */}
+                      {/*  IDLE → Run + Pause/Resume + Delete 
                       <>
                         {/* Run */}
-                        <Tooltip title={isPaused ? 'Resume account first' : `Run ${a.email}`}>
+                        {/* <Tooltip title={isPaused ? 'Resume account first' : `Run ${a.email}`}>
                           <span style={{ flex: 1 }}>
                             <Button fullWidth size="small" variant="outlined" startIcon={<PlayArrowIcon />}
                               onClick={() => handleRun(a)} disabled={isPaused}
@@ -180,10 +180,10 @@ export default function Accounts({ data, refetch, onToast, worker, user, myActiv
                               Run
                             </Button>
                           </span>
-                        </Tooltip>
+                        </Tooltip> */}
 
                         {/* Pause / Resume */}
-                        <Tooltip title={isPaused ? 'Resume this account' : 'Pause this account'}>
+                        {/* <Tooltip title={isPaused ? 'Resume this account' : 'Pause this account'}>
                           <span style={{ flex: 1 }}>
                             <Button fullWidth size="small" variant="outlined"
                               startIcon={isPaused ? <ReplayIcon /> : <PauseIcon />}
@@ -198,18 +198,18 @@ export default function Accounts({ data, refetch, onToast, worker, user, myActiv
                               {isPaused ? 'Resume' : 'Pause'}
                             </Button>
                           </span>
-                        </Tooltip>
+                        </Tooltip> */}
 
                         {/* Delete */}
-                        <Tooltip title="Disconnect account">
+                        {/* <Tooltip title="Disconnect account">
                           <IconButton size="small" onClick={() => setDeleteTarget(a.email)}
                             sx={{ color: '#EF4444', bgcolor: 'rgba(239,68,68,0.08)', borderRadius: 1.5 }}>
                             <DeleteOutlineIcon sx={{ fontSize: 16 }} />
                           </IconButton>
                         </Tooltip>
-                      </>
-                    )}
-                  </Box>
+                      </> */}
+                    {/* )} */}
+                  {/* </Box> */}
                 </CardContent>
               </Card>
             </Grid>

@@ -1,7 +1,7 @@
 /**
  * AdminPanel — Admin + SuperAdmin
  * Sections:
- *   1. User Management     (superadmin only)
+ *   1. User Management     (canManageUsers permission — superadmin always, admin/user if granted)
  *   2. Role Permissions    (superadmin only)
  *   3. Worker Config       (superadmin only) — delays + concurrency
  *   4. Live Activity       (admin + superadmin) — all users' current runs
@@ -17,6 +17,8 @@ import {
 } from '@mui/material';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import AddIcon           from '@mui/icons-material/Add';
+import SearchIcon        from '@mui/icons-material/Search';
+import InputAdornment    from '@mui/material/InputAdornment';
 import LockResetIcon     from '@mui/icons-material/LockReset';
 import InfoOutlinedIcon  from '@mui/icons-material/InfoOutlined';
 import RefreshIcon       from '@mui/icons-material/Refresh';
@@ -50,7 +52,8 @@ const phaseColor = {
 };
 
 export default function AdminPanel({ onToast, user }) {
-  const isSuperAdmin = user?.role === 'superadmin';
+  const isSuperAdmin    = user?.role === 'superadmin';
+  const canManageUsers  = isSuperAdmin || !!(user?.permissions?.canManageUsers);
 
   // ── User management state ───────────────────────────────────────────────────
   const [users,       setUsers]       = useState([]);
@@ -68,6 +71,7 @@ export default function AdminPanel({ onToast, user }) {
 
   const [deleteTarget,  setDeleteTarget]  = useState(null);
   const [roleConfirm,   setRoleConfirm]   = useState(null);  // { username, role }
+  const [userSearch,    setUserSearch]    = useState('');
 
   // ── Worker config state ─────────────────────────────────────────────────────
   const [config,         setConfig]         = useState(null);
@@ -83,24 +87,28 @@ export default function AdminPanel({ onToast, user }) {
   const load = useCallback(async () => {
     try {
       const promises = [getActivity()];
-      if (isSuperAdmin) {
-        promises.push(getUsers(), getPermissions(), getWorkerConfig());
-      }
-      const results = await Promise.allSettled(promises);
+      if (canManageUsers) promises.push(getUsers());
+      if (isSuperAdmin)   promises.push(getPermissions(), getWorkerConfig());
 
+      const results = await Promise.allSettled(promises);
       if (results[0].status === 'fulfilled') setActivity(results[0].value.data.activity || {});
+
+      let idx = 1;
+      if (canManageUsers && results[idx]?.status === 'fulfilled') {
+        setUsers(results[idx].value.data.users);
+        idx++;
+      }
       if (isSuperAdmin) {
-        if (results[1].status === 'fulfilled') setUsers(results[1].value.data.users);
-        if (results[2].status === 'fulfilled') setPermissions(results[2].value.data.permissions);
-        if (results[3].status === 'fulfilled') {
-          const cfg = results[3].value.data.config;
+        if (results[idx]?.status === 'fulfilled')   setPermissions(results[idx].value.data.permissions);
+        if (results[idx+1]?.status === 'fulfilled') {
+          const cfg = results[idx+1].value.data.config;
           setConfig(cfg);
           setLocalConfig(cfg);
         }
       }
     } catch { onToast('Failed to load admin data', 'error'); }
     finally { setLoading(false); }
-  }, [isSuperAdmin]);
+  }, [isSuperAdmin, canManageUsers]);
 
   useEffect(() => {
     load();
@@ -318,7 +326,7 @@ export default function AdminPanel({ onToast, user }) {
         </CardContent>
       </Card>
 
-      {/* Superadmin-only sections below */}
+      {/* Worker Config — superadmin only */}
       {isSuperAdmin && (
         <>
           {/* ── Worker Config ──────────────────────────────────────────────── */}
@@ -455,6 +463,12 @@ export default function AdminPanel({ onToast, user }) {
             </CardContent>
           </Card>
 
+        </>
+      )}
+
+      {/* User Management — visible to any user with canManageUsers permission */}
+      {canManageUsers && (
+        <>
           {/* ── User Management ─────────────────────────────────────────────── */}
           <Card>
             <CardContent>
@@ -467,6 +481,12 @@ export default function AdminPanel({ onToast, user }) {
                   Create User
                 </Button>
               </Box>
+              {/* <TextField
+                size="small" placeholder="Search users..." value={userSearch}
+                onChange={e => setUserSearch(e.target.value)}
+                InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ fontSize: 16, color: 'text.disabled' }} /></InputAdornment> }}
+                sx={{ mb: 2, width: 240, '& .MuiInputBase-input': { fontSize: 12 } }}
+              /> */}
 
               <TableContainer component={Paper} elevation={0} sx={{ bgcolor: 'transparent' }}>
                 <Table size="small">
@@ -478,14 +498,31 @@ export default function AdminPanel({ onToast, user }) {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {users.map(u => (
+                    {users
+                      .filter(u => isSuperAdmin || u.role !== 'superadmin')
+                      .filter(u => !userSearch || u.username.toLowerCase().includes(userSearch.toLowerCase()))
+                      .sort((a, b) => {
+                        if (a.username === user?.username) return -1;
+                        if (b.username === user?.username) return 1;
+                        return a.username.localeCompare(b.username);
+                      })
+                      .map(u => (
                       <TableRow key={u.username} sx={{ '&:hover': { bgcolor: 'rgba(255,255,255,0.02)' } }}>
-                        <TableCell sx={{ fontFamily: 'DM Mono, monospace', fontSize: 12 }}>{u.username}</TableCell>
+                        <TableCell sx={{ fontFamily: 'DM Mono, monospace', fontSize: 12 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            {u.username}
+                            {u.username === user?.username && (
+                              <Chip label="You" size="small" sx={{ height: 16, fontSize: 9, fontFamily: 'DM Mono, monospace', bgcolor: 'rgba(0,229,255,0.1)', color: '#00E5FF', border: '1px solid rgba(0,229,255,0.2)' }} />
+                            )}
+                          </Box>
+                        </TableCell>
                         <TableCell>
                           <FormControl size="small" variant="standard">
                             <Select value={u.role} onChange={e => handleRoleChange(u.username, e.target.value)}
                               disableUnderline sx={{ fontFamily: 'DM Mono, monospace', fontSize: 11 }}>
-                              {ROLES.map(r => <MenuItem key={r} value={r} sx={{ fontSize: 11 }}>{ROLE_LABELS[r]}</MenuItem>)}
+                              {ROLES.filter(r => isSuperAdmin || r !== 'superadmin').map(r => (
+                                <MenuItem key={r} value={r} sx={{ fontSize: 11 }}>{ROLE_LABELS[r]}</MenuItem>
+                              ))}
                             </Select>
                           </FormControl>
                         </TableCell>
@@ -519,6 +556,12 @@ export default function AdminPanel({ onToast, user }) {
             </CardContent>
           </Card>
 
+        </>
+      )}
+
+      {/* Role Permissions and Worker Config — superadmin only */}
+      {isSuperAdmin && (
+        <>
           {/* ── Role Permissions ─────────────────────────────────────────────── */}
           <Card>
             <CardContent>
@@ -567,7 +610,9 @@ export default function AdminPanel({ onToast, user }) {
           <FormControl size="small" fullWidth>
             <InputLabel>Role</InputLabel>
             <Select value={newRole} label="Role" onChange={e => setNewRole(e.target.value)}>
-              {ROLES.map(r => <MenuItem key={r} value={r}>{ROLE_LABELS[r]}</MenuItem>)}
+              {ROLES.filter(r => isSuperAdmin || r !== 'superadmin').map(r => (
+                <MenuItem key={r} value={r}>{ROLE_LABELS[r]}</MenuItem>
+              ))}
             </Select>
           </FormControl>
         </DialogContent>

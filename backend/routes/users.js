@@ -5,12 +5,14 @@
  * GET  /users/me                        — get current user info
  * POST /users/logout                    — revoke token server-side (FIX: was stateless)
  *
- * --- SuperAdmin only ---
+ * --- canManageUsers permission (superadmin always, admin/user if granted) ---
  * GET    /users                         — list all users
  * POST   /users                         — create user
  * DELETE /users/:username               — delete user
- * PATCH  /users/:username/role          — change user role
  * PATCH  /users/:username/password      — reset password
+ *
+ * --- SuperAdmin only (privilege escalation risk) ---
+ * PATCH  /users/:username/role          — change user role
  *
  * GET    /users/permissions             — get all role permissions
  * PATCH  /users/permissions/:role       — update role permissions (superadmin)
@@ -19,7 +21,7 @@
 const express    = require('express');
 const router     = express.Router();
 const UserStore  = require('../services/userStore');
-const { generateToken, requireAuth, requireRole, revokeToken } = require('../middleware/auth');
+const { generateToken, requireAuth, requireRole, requirePermission, revokeToken } = require('../middleware/auth');
 const logger     = require('../services/logger');
 
 // ── Login ──────────────────────────────────────────────────────────────────────
@@ -58,13 +60,13 @@ router.get('/me', requireAuth, (req, res) => {
   res.json({ success: true, user: { ...user, permissions } });
 });
 
-// ── List users (superadmin only) ───────────────────────────────────────────────
-router.get('/', ...requireRole('superadmin'), (req, res) => {
+// ── List users (canManageUsers permission) ──────────────────────────────────────
+router.get('/', ...requirePermission('canManageUsers'), (req, res) => {
   res.json({ success: true, users: UserStore.listUsers() });
 });
 
-// ── Create user (superadmin only) ──────────────────────────────────────────────
-router.post('/', ...requireRole('superadmin'), async (req, res) => {
+// ── Create user (canManageUsers permission) ─────────────────────────────────────
+router.post('/', ...requirePermission('canManageUsers'), async (req, res) => {
   const { username, password, role } = req.body;
   if (!username || !password || !role) {
     return res.status(400).json({ error: 'username, password and role required' });
@@ -82,8 +84,8 @@ router.post('/', ...requireRole('superadmin'), async (req, res) => {
   }
 });
 
-// ── Delete user (superadmin only) ──────────────────────────────────────────────
-router.delete('/:username', ...requireRole('superadmin'), (req, res) => {
+// ── Delete user (canManageUsers permission) ─────────────────────────────────────
+router.delete('/:username', ...requirePermission('canManageUsers'), (req, res) => {
   const { username } = req.params;
   if (username === req.user.username) {
     return res.status(400).json({ error: 'Cannot delete yourself' });
@@ -98,9 +100,20 @@ router.delete('/:username', ...requireRole('superadmin'), (req, res) => {
 });
 
 // ── Change role (superadmin only) ──────────────────────────────────────────────
-router.patch('/:username/role', ...requireRole('superadmin'), (req, res) => {
+router.patch('/:username/role', ...requirePermission('canManageUsers'), (req, res) => {
   const { username } = req.params;
   const { role }     = req.body;
+  // Non-superadmins cannot assign or target superadmin role
+  if (!['admin','superadmin'].includes(req.user.role)) {
+    return res.status(403).json({ error: 'Insufficient permissions' });
+  }
+  if (role === 'superadmin' && req.user.role !== 'superadmin') {
+    return res.status(403).json({ error: 'Only superadmin can assign superadmin role' });
+  }
+  const target = UserStore.getUser(username);
+  if (target?.role === 'superadmin' && req.user.role !== 'superadmin') {
+    return res.status(403).json({ error: `Only superadmin can change a superadmin's role` })
+  }
   try {
     UserStore.updateRole(username, role);
     logger.info(`Role updated: ${username} → ${role} by ${req.user.username}`);
@@ -110,8 +123,8 @@ router.patch('/:username/role', ...requireRole('superadmin'), (req, res) => {
   }
 });
 
-// ── Reset password (superadmin only) ───────────────────────────────────────────
-router.patch('/:username/password', ...requireRole('superadmin'), async (req, res) => {
+// ── Reset password (canManageUsers permission) ──────────────────────────────────
+router.patch('/:username/password', ...requirePermission('canManageUsers'), async (req, res) => {
   const { username } = req.params;
   const { password } = req.body;
   if (!password) return res.status(400).json({ error: 'password required' });
