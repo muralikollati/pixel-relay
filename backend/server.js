@@ -55,20 +55,25 @@ const pollingLimiter = rateLimit({
 
 // Gmail proxy limiter — high ceiling per 15 min window, matching expected batch volume.
 // 100 emails × 2 calls + 3 overhead = ~203 per account. 10 accounts = 2030 per run.
+// FIX #8: keyGenerator by JWT so multiple users behind one IP don't share quota.
 const gmailLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max:      5000,
   standardHeaders: true,
   legacyHeaders:   false,
+  keyGenerator: (req) => req.headers.authorization || req.ip,
   message: { error: 'Gmail proxy rate limit reached.' },
 });
 
 // General API limiter — applied to all other authenticated endpoints.
+// FIX #8: keyGenerator uses JWT token when present so users behind the same IP
+// (office, VPN, home router) each get their own independent bucket.
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max:      1000,
   standardHeaders: true,
   legacyHeaders:   false,
+  keyGenerator: (req) => req.headers.authorization || req.ip,
   message: { error: 'Too many requests, please try again later.' },
 });
 
@@ -88,9 +93,7 @@ app.use(express.urlencoded({ extended: true }));
 // Skip logging for high-frequency polling routes to avoid log spam
 const SILENT_ROUTES = new Set([
   '/worker/activity',
-  '/worker/activity/my',
   '/worker/stats',
-  '/worker/stop-poll',
   '/account-requests/pending-count',
   '/users/me',
   '/health',
@@ -110,16 +113,24 @@ app.use('/auth',    generalLimiter, authRoutes);
 app.use('/users/login', loginLimiter);
 app.use('/users',   generalLimiter, userRoutes);
 
-// Polling-heavy worker routes get their own tuned limiter
-app.use('/worker/stats',        pollingLimiter);
-app.use('/worker/activity',     pollingLimiter);
-app.use('/worker/activity/my',  pollingLimiter);
-app.use('/worker/stop-poll',    pollingLimiter);
-app.use('/worker',  generalLimiter, workerRoutes);
+// FIX #7: All high-frequency polling routes get their own generous bucket
+// (300 req/min) so they never eat into the general limiter's 1000 req/15min budget.
+// Note: /worker/activity/my removed (merged into /worker/activity — see worker.js)
+// Note: /worker/stop-poll removed (stop signals now returned in POST /worker/activity response)
+app.use('/worker/stats',    pollingLimiter);
+app.use('/worker/activity', pollingLimiter);
+app.use('/worker',          generalLimiter, workerRoutes);
 
 app.use('/reports', generalLimiter, reportRoutes);
 app.use('/gmail',   gmailLimiter,   gmailRoutes);
+
+// FIX #7: pending-count on pollingLimiter — it polls every 10s but is now
+// folded into /worker/stats (see fix #12). Kept here as a safety net.
+app.use('/account-requests/pending-count', pollingLimiter);
 app.use('/account-requests', generalLimiter, accountRequestRoutes);
+
+// FIX #7: /users/me polls every 30s — move to pollingLimiter
+app.use('/users/me', pollingLimiter);
 
 // ── Health ─────────────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
