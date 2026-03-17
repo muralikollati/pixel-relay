@@ -15,7 +15,7 @@ const TokenStore = require('../services/tokenStore');
 const AccountRequestStore = require('../services/accountRequestStore');
 const logger     = require('../services/logger');
 const { requireAuth, requirePermission } = require('../middleware/auth');
-const UserStore  = require('../services/userStore');
+const UserStore   = require('../services/userStore');
 const crypto     = require('crypto');
 
 // Simple signing so the state can't be forged (username:sig)
@@ -88,6 +88,17 @@ router.get('/google/callback', async (req, res) => {
     // Check if the owner is admin/superadmin — if so, skip approval queue entirely
     const ownerUser = UserStore.getUser(owner);
     const ownerRole = ownerUser?.role || 'user';
+
+    // FIX #9: Enforce per-user account cap to prevent API quota abuse.
+    // Cap applies to all roles. Admins/superadmins see all accounts so their
+    // count is higher — we scope the check to their own owned accounts only.
+    const maxAccountsPerUser = require('../services/configStore').get().maxAccountsPerUser || 10;
+    const existingCount = TokenStore.getAll().filter(a => a.owner === owner).length;
+    if (existingCount >= maxAccountsPerUser) {
+      logger.warn(`Account cap reached for ${owner}: ${existingCount}/${maxAccountsPerUser}`);
+      return res.redirect(`${FRONTEND}/?error=account_limit_reached`);
+    }
+
     if (['admin', 'superadmin'].includes(ownerRole)) {
       TokenStore.save(tokenData.email, tokenData, owner);
       logger.info(`Account connected directly (admin): ${tokenData.email} (owner: ${owner})`);

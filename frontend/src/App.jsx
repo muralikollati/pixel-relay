@@ -14,7 +14,7 @@ import RunHistory      from './pages/RunHistory';
 import Login           from './pages/Login';
 import { useStats }    from './hooks/useStats';
 import { useWorker }   from './hooks/useWorker';
-import { getMe, getActivity, getMyActivity, getPendingCount, logoutApi } from './utils/api';
+import { getMe, getActivity, logoutApi } from './utils/api';
 
 const theme = createTheme({
   palette: {
@@ -54,10 +54,12 @@ export default function App() {
   // myActivity:  for all users — scoped live statuses for accounts they can see
   const [allActivity,  setAllActivity]  = useState({});
   const [myActivity,   setMyActivity]   = useState({ running: false, accounts: [] });
-  const [pendingCount, setPendingCount] = useState(0);
+  // FIX #12: pendingCount derived from stats (polled every 4s) — no separate interval
   const [searchParams, setSearchParams] = useSearchParams();
 
   const { data, refetch } = useStats(4000, !!user);
+  // pendingRequests comes from /worker/stats — already polled every 4s by useStats
+  const pendingCount = data?.pendingRequests || 0;
   const worker = useWorker({ onStatsUpdate: refetch, username: user?.username });
 
   // ── Permissions refresh ─────────────────────────────────────────────────────
@@ -86,40 +88,25 @@ export default function App() {
     return () => clearInterval(id);
   }, [user?.username]); // only restart when username changes — not on every user object mutation
 
-  // ── Admin: poll full activity map (all users) ───────────────────────────────
-  useEffect(() => {
-    if (!user || !isAdminRole(user.role)) return;
-    const poll = async () => {
-      try { const res = await getActivity(); setAllActivity(res.data.activity || {}); } catch { /* */ }
-    };
-    poll();
-    const id = setInterval(poll, 3000);
-    return () => clearInterval(id);
-  }, [user?.role]);
-
-  // ── All users: poll activity scoped to their own accounts ──────────────────
-  // This ensures regular users see live progress even when admin is running their account.
-  // Admins also poll this so their dashboard shows correctly when not running themselves.
+  // ── FIX #10 + #12: Single merged activity poll ──────────────────────────────
+  // GET /worker/activity now returns both:
+  //   res.data.activity    — full map (admins only, empty object for regular users)
+  //   res.data.myActivity  — scoped to current user's accounts (all roles)
+  // pendingRequests is included in /worker/stats (polled by useStats every 4s)
+  // so we no longer need a separate /account-requests/pending-count interval.
   useEffect(() => {
     if (!user) return;
     const poll = async () => {
-      try { const res = await getMyActivity(); setMyActivity(res.data); } catch { /* */ }
+      try {
+        const res = await getActivity();
+        setAllActivity(res.data.activity || {});
+        setMyActivity(res.data.myActivity || { running: false, accounts: [] });
+      } catch { /* non-fatal */ }
     };
     poll();
     const id = setInterval(poll, 3000);
     return () => clearInterval(id);
   }, [user?.username]);
-
-  // ── Pending request badge (admin) ───────────────────────────────────────────
-  useEffect(() => {
-    if (!user || !isAdminRole(user.role)) return;
-    const poll = async () => {
-      try { const res = await getPendingCount(); setPendingCount(res.data.count || 0); } catch { /* */ }
-    };
-    poll();
-    const id = setInterval(poll, 10_000);
-    return () => clearInterval(id);
-  }, [user?.role]);
 
   // ── OAuth redirect handling ─────────────────────────────────────────────────
   // FIX: This MUST run unconditionally regardless of auth state.

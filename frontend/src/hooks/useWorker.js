@@ -17,10 +17,9 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import api from '../utils/api';
 import { extractAllBeacons } from '../services/beaconExtractor';
 import { fireAllBeacons }    from '../services/beaconFirer';
-import { postActivity, pollStopRequests } from '../utils/api';
+import { postActivity } from '../utils/api';
 
-const DEFAULT_CONFIG = { batchDelayMs: 2000, emailJitterMs: 0, concurrencyLimit: 10 };
-const BATCH_SIZE     = 5;
+const DEFAULT_CONFIG = { batchDelayMs: 2000, emailJitterMs: 0, concurrencyLimit: 10, batchSize: 5 };
 const TAG            = '[PixelRelay]';
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -93,6 +92,9 @@ export function useWorker({ onStatsUpdate, username } = {}) {
 
   // Report live activity to backend so admin can see it
   // Always reads from statusesRef so intervals never get stale closure data
+  // FIX #13: reportActivity now returns a Promise so callers that need stop signals
+  // can await it. The backend returns stopRequests in the POST response body —
+  // no separate /worker/stop-poll endpoint needed.
   function reportActivity(isRunning) {
     const statuses  = statusesRef.current;
     const accounts  = Object.entries(statuses)
@@ -104,10 +106,21 @@ export function useWorker({ onStatsUpdate, username } = {}) {
         done:    s.done    || 0,
         total:   s.total   || 0,
       }));
-    postActivity({
+    return postActivity({
       running:   isRunning,
       accounts,
       completed: completedRef.current,
+    }).then(res => {
+      // Apply any stop signals delivered inline in the activity response
+      const stops = res?.data?.stopRequests || [];
+      if (stops.length > 0) {
+        const newMap = { ...stopMapRef.current };
+        for (const email of stops) {
+          console.log(`${TAG} Admin stop received for: ${email}`);
+          newMap[email] = true;
+        }
+        stopMapRef.current = newMap;
+      }
     }).catch(() => {}); // non-fatal — never block processing
   }
 
@@ -202,19 +215,20 @@ export function useWorker({ onStatsUpdate, username } = {}) {
 
       // Phase 2: Batched processing
       let success = 0, done = 0, totalBeacons = 0;
-      const totalBatches = Math.ceil(allIds.length / BATCH_SIZE);
-      console.log(`${TAG} [${accountEmail}] ${allIds.length} emails · ${totalBatches} batches · delay ${config.batchDelayMs}ms`);
+      const batchSize    = config.batchSize || 5;
+      const totalBatches = Math.ceil(allIds.length / batchSize);
+      console.log(`${TAG} [${accountEmail}] ${allIds.length} emails · ${totalBatches} batches · batchSize ${batchSize} · delay ${config.batchDelayMs}ms`);
 
-      for (let i = 0; i < allIds.length; i += BATCH_SIZE) {
+      for (let i = 0; i < allIds.length; i += batchSize) {
         if (stopMapRef.current[accountEmail]) {
-          console.log(`${TAG} [${accountEmail}] Stopped at batch ${Math.floor(i / BATCH_SIZE) + 1}/${totalBatches}`);
+          console.log(`${TAG} [${accountEmail}] Stopped at batch ${Math.floor(i / batchSize) + 1}/${totalBatches}`);
           setStatus(accountEmail, { phase: 'idle', message: `Stopped at ${done}/${allIds.length}` });
           setTimeout(() => clearStatus(accountEmail), 5000);
           return;
         }
 
-        const batch    = allIds.slice(i, i + BATCH_SIZE);
-        const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+        const batch    = allIds.slice(i, i + batchSize);
+        const batchNum = Math.floor(i / batchSize) + 1;
         console.log(`${TAG} [${accountEmail}] Batch ${batchNum}/${totalBatches}`);
 
         setStatus(accountEmail, {
@@ -239,7 +253,7 @@ export function useWorker({ onStatsUpdate, username } = {}) {
         console.log(`${TAG} [${accountEmail}] Batch ${batchNum} done — ${success}/${done}, ${totalBeacons} beacons`);
 
         // Batch delay between batches (not after the last one)
-        const isLastBatch = i + BATCH_SIZE >= allIds.length;
+        const isLastBatch = i + batchSize >= allIds.length;
         if (!isLastBatch && config.batchDelayMs > 0) {
           console.log(`${TAG} [${accountEmail}] Waiting ${config.batchDelayMs}ms before next batch`);
           await sleep(config.batchDelayMs);
@@ -330,28 +344,16 @@ export function useWorker({ onStatsUpdate, username } = {}) {
     // Activity report on start
     reportActivity(true);
 
-    // Activity reporting interval — reads statusesRef so always has current data
+    // Activity reporting interval — reads statusesRef so always has current data.
+    // FIX #13: Stop signals are now returned in the POST /worker/activity response
+    // body — no separate stop-poll interval needed.
     let activityInterval = null;
-    let stopPollInterval  = null;
     activityInterval = setInterval(() => reportActivity(true), 3000);
-
-    // Poll backend every 4s for admin stop signals (cross-browser stop)
-    stopPollInterval = setInterval(async () => {
-      try {
-        const res = await pollStopRequests();
-        const emails = res.data.stopRequests || [];
-        for (const email of emails) {
-          console.log(`${TAG} Admin stop received for: ${email}`);
-          stopMapRef.current = { ...stopMapRef.current, [email]: true };
-        }
-      } catch { /* non-fatal */ }
-    }, 4000);
 
     try {
       await withConcurrency(accountsToRun, concurrencyLimit, a => processAccount(a.email));
     } finally {
       clearInterval(activityInterval);
-      clearInterval(stopPollInterval);
       runningRef.current = false;
       setRunning(false);
       setRunAllMode(false);

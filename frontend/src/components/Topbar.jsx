@@ -154,7 +154,7 @@ export default function Topbar({ tab, setTab, onToast, user, onLogout, worker, d
           <Button variant="contained" size="small" startIcon={<PlayArrowIcon />} onClick={handleRunAll}
             sx={{ bgcolor: 'rgba(124,58,237,0.15)', color: '#A78BFA', border: '1px solid rgba(124,58,237,0.3)', boxShadow: 'none',
               '&:hover': { bgcolor: 'rgba(124,58,237,0.25)', boxShadow: 'none' } }}>
-            {isMobile ? 'Run' : 'Run All'}
+            {'Run All'}
           </Button>
         )}
         {canRun && anyRunning && runAllMode && (

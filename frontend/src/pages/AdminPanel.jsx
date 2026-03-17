@@ -278,8 +278,8 @@ export default function AdminPanel({ onToast, user }) {
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    {['User', 'Account', 'Emails', 'Beacons', 'Rate', 'Spam Rescued', 'Finished'].map(h => (
-                      <TableCell key={h} sx={{ color: 'text.disabled', fontSize: 10, fontFamily: 'DM Mono, monospace', py: 0.75 }}>{h}</TableCell>
+                    {['User', 'Account', 'Emails', 'Beacons', 'Rate', 'Spam Rescued', 'Finished'].map((col, i) => (
+                      <TableCell key={col || i} sx={{ color: 'text.disabled', fontSize: 10, fontFamily: 'DM Mono, monospace', py: 0.75 }}>{col}</TableCell>
                     ))}
                   </TableRow>
                 </TableHead>
@@ -406,6 +406,50 @@ export default function AdminPanel({ onToast, user }) {
                     </Box>
                     <Typography variant="caption" color="text.disabled">0 – 3 seconds</Typography>
                   </Grid>
+
+                  {/* FIX #14: Batch size now configurable */}
+                  <Grid item xs={12} sm={4}>
+                    <Typography sx={{ fontSize: 12, fontWeight: 600, mb: 0.5 }}>
+                      Batch Size
+                    </Typography>
+                    <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mb: 2 }}>
+                      Emails processed in parallel per account per batch.
+                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <Slider
+                        value={localConfig.batchSize || 5}
+                        onChange={(_, v) => handleConfigChange('batchSize', v)}
+                        min={1} max={20} step={1}
+                        sx={{ color: '#F59E0B', flex: 1 }}
+                      />
+                      <Box sx={{ minWidth: 40, textAlign: 'center', fontFamily: 'DM Mono, monospace', fontSize: 18, fontWeight: 800, color: '#F59E0B' }}>
+                        {localConfig.batchSize || 5}
+                      </Box>
+                    </Box>
+                    <Typography variant="caption" color="text.disabled">1 – 20 emails per batch</Typography>
+                  </Grid>
+
+                  {/* FIX #9: Max accounts per user cap */}
+                  <Grid item xs={12} sm={4}>
+                    <Typography sx={{ fontSize: 12, fontWeight: 600, mb: 0.5 }}>
+                      Max Accounts Per User
+                    </Typography>
+                    <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mb: 2 }}>
+                      Max Gmail accounts any single user can connect. Prevents API quota abuse.
+                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <Slider
+                        value={localConfig.maxAccountsPerUser || 10}
+                        onChange={(_, v) => handleConfigChange('maxAccountsPerUser', v)}
+                        min={1} max={50} step={1}
+                        sx={{ color: '#EF4444', flex: 1 }}
+                      />
+                      <Box sx={{ minWidth: 40, textAlign: 'center', fontFamily: 'DM Mono, monospace', fontSize: 18, fontWeight: 800, color: '#EF4444' }}>
+                        {localConfig.maxAccountsPerUser || 10}
+                      </Box>
+                    </Box>
+                    <Typography variant="caption" color="text.disabled">1 – 50 accounts per user</Typography>
+                  </Grid>
                 </Grid>
               )}
             </CardContent>
@@ -428,8 +472,8 @@ export default function AdminPanel({ onToast, user }) {
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      {['Username', 'Role', 'Last Login', 'Created', 'Actions'].map(h => (
-                        <TableCell key={h} sx={{ color: 'text.disabled', fontSize: 10, fontFamily: 'DM Mono, monospace', letterSpacing: '0.08em' }}>{h}</TableCell>
+                      {['Username', 'Role', 'Last Login', 'Created', 'Actions'].map((col, i) => (
+                        <TableCell key={col || i} sx={{ color: 'text.disabled', fontSize: 10, fontFamily: 'DM Mono, monospace', letterSpacing: '0.08em' }}>{col}</TableCell>
                       ))}
                     </TableRow>
                   </TableHead>

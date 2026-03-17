@@ -54,7 +54,6 @@ export const resumeAccount = (email) => api.patch(`/auth/accounts/${encodeURICom
 
 // ── Account Requests ───────────────────────────────────────────────────────────
 export const getAccountRequests     = ()            => api.get('/account-requests');
-export const getPendingCount        = ()            => api.get('/account-requests/pending-count');
 export const approveRequest         = (email)       => api.post(`/account-requests/${encodeURIComponent(email)}/approve`);
 export const rejectRequest          = (email, reason) => api.post(`/account-requests/${encodeURIComponent(email)}/reject`, { reason });
 export const approveAllRequests     = ()            => api.post('/account-requests/approve-all');
@@ -68,7 +67,6 @@ export const getRunHistory = (email, limit = 100) =>
 
 // ── Reports ────────────────────────────────────────────────────────────────────
 export const getReports     = (days = 7) => api.get(`/reports?days=${days}`);
-export const getTodayReport = ()         => api.get('/reports/today');
 
 // ── Worker config ──────────────────────────────────────────────────────────────
 export const getWorkerConfig   = ()       => api.get('/worker/config');
@@ -77,7 +75,6 @@ export const patchWorkerConfig = (patch)  => api.patch('/worker/config', patch);
 // ── Worker activity ────────────────────────────────────────────────────────────
 export const postActivity   = (payload) => api.post('/worker/activity', payload);
 export const getActivity    = ()        => api.get('/worker/activity');
-export const getMyActivity  = ()        => api.get('/worker/activity/my');
 
 export const healthCheck = () => api.get('/health');
 
@@ -85,4 +82,3 @@ export default api;
 
 // ── Admin stop signals ─────────────────────────────────────────────────────────
 export const requestStop    = (targetUser, email) => api.post('/worker/stop-request', { targetUser, email });
-export const pollStopRequests = ()                => api.get('/worker/stop-poll');

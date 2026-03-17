@@ -85,7 +85,7 @@ db.exec(`
 `);
 
 // Default worker config
-[['concurrencyLimit','10'],['batchDelayMs','2000'],['emailJitterMs','0']].forEach(([k,v]) =>
+[['concurrencyLimit','10'],['batchDelayMs','2000'],['emailJitterMs','0'],['batchSize','5'],['maxAccountsPerUser','10']].forEach(([k,v]) =>
   db.prepare('INSERT OR IGNORE INTO worker_config (key,value) VALUES (?,?)').run(k,v)
 );
 

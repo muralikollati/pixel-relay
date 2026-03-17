@@ -1,11 +1,13 @@
 /**
  * Worker Routes (JWT protected)
  *
- * GET  /worker/stats    — account list + cumulative stats (all roles)
+ * GET  /worker/stats    — account list + cumulative stats + pendingRequests (admin only)
  * GET  /worker/config   — fetch worker config (all roles)
  * PATCH /worker/config  — update worker config (superadmin only)
- * POST /worker/activity — frontend reports live run status (all roles)
- * GET  /worker/activity — admin/superadmin see all active + completed runs
+ * POST /worker/activity — frontend reports live run status; returns stop signals in response
+ * GET  /worker/activity — merged: admins get full map + own scope; users get own scope only
+ * GET  /worker/run-history — per-account full run timeline
+ * POST /worker/stop-request — admin signals a user's account to stop
  */
 
 const express    = require('express');
@@ -17,7 +19,8 @@ const RunHistoryStore = require('../services/runHistoryStore');
 
 // ── In-memory activity map ─────────────────────────────────────────────────────
 // { [username]: { running, updatedAt, accounts: [{email, phase, message, done, total}],
-//                 completed: [{email, emails, beacons, rate, spam, finishedAt}] } }
+//                 completed: [{email, emails, beacons, rate, spam, finishedAt}],
+//                 stopRequests: [email, ...] } }
 const activityMap = {};
 
 // Purge stale entries older than 30 minutes
@@ -28,11 +31,11 @@ function purgeStale() {
   }
 }
 
-// FIX: Run purge on a scheduled interval so the activityMap doesn't grow
-// unbounded if GET /worker/activity is never polled (e.g. no admin tab open).
 setInterval(purgeStale, 5 * 60 * 1000);
 
 // ── Stats ─────────────────────────────────────────────────────────────────────
+// FIX #12: pendingRequests added for admin/superadmin — removes the separate
+// /account-requests/pending-count polling loop entirely.
 router.get('/stats', requireAuth, (req, res) => {
   try {
     const { username, role } = req.user;
@@ -41,6 +44,8 @@ router.get('/stats', requireAuth, (req, res) => {
     const avgSuccess = active.length
       ? (active.reduce((s, a) => s + (a.stats?.successRate || 0), 0) / active.length).toFixed(1)
       : 0;
+
+    const isAdmin = ['admin', 'superadmin'].includes(role);
 
     res.json({
       success: true,
@@ -53,6 +58,8 @@ router.get('/stats', requireAuth, (req, res) => {
         warnings:       accounts.filter(a => ['warning', 'error'].includes(a.status)).length,
       },
       accounts,
+      // Only compute and expose pendingRequests for admin roles to avoid leaking info
+      pendingRequests: isAdmin ? require('../services/accountRequestStore').pendingCount() : 0,
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -74,6 +81,10 @@ router.patch('/config', ...requireRole('superadmin'), (req, res) => {
 });
 
 // ── Activity — frontend reports live run status ───────────────────────────────
+// FIX #13: Stop signals are now delivered in the POST response body instead of
+// requiring a separate GET /worker/stop-poll endpoint. The frontend reads
+// response.data.stopRequests and applies them immediately — same latency (3s
+// activity interval) with one less polling loop.
 // body: { running, accounts: [{email, phase, message, done, total}],
 //         completed: [{email, emails, beacons, rate, spam, finishedAt}] }
 router.post('/activity', requireAuth, (req, res) => {
@@ -81,7 +92,7 @@ router.post('/activity', requireAuth, (req, res) => {
   const { running, accounts = [], completed = [] } = req.body;
 
   if (!activityMap[username]) {
-    activityMap[username] = { running: false, accounts: [], completed: [], updatedAt: Date.now() };
+    activityMap[username] = { running: false, accounts: [], completed: [], stopRequests: [], updatedAt: Date.now() };
   }
 
   activityMap[username].running   = running;
@@ -103,27 +114,27 @@ router.post('/activity', requireAuth, (req, res) => {
 
   if (!running) activityMap[username].accounts = [];
 
-  res.json({ success: true });
+  // Deliver and clear any pending stop requests in the response
+  const stopRequests = activityMap[username].stopRequests || [];
+  if (stopRequests.length > 0) activityMap[username].stopRequests = [];
+
+  res.json({ success: true, stopRequests });
 });
 
-// ── Activity — all-users read (admin/superadmin only) ────────────────────────
-router.get('/activity', ...requireRole('admin', 'superadmin'), (req, res) => {
-  purgeStale();
-  res.json({ success: true, activity: activityMap });
-});
-
-// ── Activity — scoped to accounts the current user can see ───────────────────
-// Used by regular users to see live progress on their own accounts,
-// even when those accounts are being run by an admin session.
-router.get('/activity/my', requireAuth, (req, res) => {
+// ── Activity — merged read endpoint (replaces /activity and /activity/my) ─────
+// FIX #10: Single endpoint serves all roles:
+//   - admin/superadmin: receives full activityMap + own scoped myActivity
+//   - regular users: receives empty activity map + own scoped myActivity
+// This eliminates the separate /worker/activity/my polling loop for admins,
+// saving ~40 requests/min per admin user.
+router.get('/activity', requireAuth, (req, res) => {
   purgeStale();
   const { username, role } = req.user;
+  const isAdmin = ['admin', 'superadmin'].includes(role);
 
-  // Get the set of emails this user is allowed to see
+  // Build scoped activity for the current user's own accounts
   const myAccounts = TokenStore.getAllForUser(username, role);
   const myEmails   = new Set(myAccounts.map(a => a.email));
-
-  // Flatten all activity across all users, keeping only accounts this user can see
   const myActivity = [];
   let anyRunning = false;
 
@@ -132,25 +143,26 @@ router.get('/activity/my', requireAuth, (req, res) => {
     for (const acc of entry.accounts || []) {
       if (myEmails.has(acc.email)) {
         anyRunning = true;
-        myActivity.push({
-          ...acc,
-          runBy: runnerUsername,  // who is running it
-        });
+        myActivity.push({ ...acc, runBy: runnerUsername });
       }
     }
   }
 
-  res.json({ success: true, running: anyRunning, accounts: myActivity });
+  res.json({
+    success:    true,
+    // Full map only for admins; empty object for regular users
+    activity:   isAdmin ? activityMap : {},
+    // Scoped to current user's accounts for everyone
+    myActivity: { running: anyRunning, accounts: myActivity },
+  });
 });
 
 // ── Run history — per-account timeline of all past runs ───────────────────────
-// GET /worker/run-history?email=x@y.com&limit=100
 router.get('/run-history', requireAuth, (req, res) => {
   const { username, role } = req.user;
   const email = req.query.email ? decodeURIComponent(req.query.email) : null;
   const limit = Math.min(parseInt(req.query.limit || '100', 10), 500);
 
-  // Verify access
   if (email) {
     const accounts = TokenStore.getAllForUser(username, role);
     if (!accounts.find(a => a.email === email)) {
@@ -159,12 +171,10 @@ router.get('/run-history', requireAuth, (req, res) => {
     return res.json({ success: true, history: RunHistoryStore.getForAccount(email, limit) });
   }
 
-  // Admin/superadmin: get history for all their accounts
   const accounts = TokenStore.getAllForUser(username, role);
   const emails   = accounts.map(a => a.email);
   res.json({ success: true, history: RunHistoryStore.getForAccounts(emails, limit) });
 });
-
 
 // ── Admin stop-request — signal a user's account to stop ─────────────────────
 router.post('/stop-request', ...requireRole('admin', 'superadmin'), (req, res) => {
@@ -177,16 +187,6 @@ router.post('/stop-request', ...requireRole('admin', 'superadmin'), (req, res) =
   if (!activityMap[targetUser].stopRequests.includes(email))
     activityMap[targetUser].stopRequests.push(email);
   res.json({ success: true });
-});
-
-// ── Stop-poll — user checks if admin requested a stop ─────────────────────────
-router.get('/stop-poll', requireAuth, (req, res) => {
-  const { username } = req.user;
-  const entry = activityMap[username];
-  if (!entry?.stopRequests?.length) return res.json({ success: true, stopRequests: [] });
-  const requests = [...entry.stopRequests];
-  activityMap[username].stopRequests = [];  // clear after delivery
-  res.json({ success: true, stopRequests: requests });
 });
 
 module.exports = router;
