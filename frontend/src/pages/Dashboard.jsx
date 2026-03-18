@@ -966,397 +966,144 @@ export default function Dashboard({
                   </Table>
                 </TableContainer>
               ) : (
-                <Grid container spacing={2}>
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
                   {filtered.map((a) => {
                     const rate = a.stats?.successRate || 0;
                     const trend = a.stats?.trend || [100];
                     const jobSt = a.jobStatus || {};
 
-                    // isActive: this account is currently being processed by ANY session/user
-                    const isActive =
-                      jobSt.phase &&
-                      !["done", "idle", "error"].includes(jobSt.phase);
-                    // fromRemote: being run by a different browser session (not this one)
+                    const isActive = jobSt.phase && !["done", "idle", "error"].includes(jobSt.phase);
                     const fromRemote = isActive && jobSt.fromRemote;
-                    // isOwnRun: this browser is the one running it
                     const isOwnRun = isActive && !fromRemote;
-
-                    const progress = jobSt.total
-                      ? Math.round((jobSt.done / jobSt.total) * 100)
-                      : 0;
-
-                    // ── Action availability rules ──
-                    // STOP: enabled whenever this account is actively processing (any session)
-                    //       For remote runs, stopOne() sends stop signal via backend flag (future)
-                    //       For now: stop button only works for own-session runs
+                    const progress = jobSt.total ? Math.round((jobSt.done / jobSt.total) * 100) : 0;
                     const canStop = isOwnRun && !runAllMode;
-                    // RUN: only when account is idle AND no other session running it AND not run-all mode
-                    const canRun =
-                      !isActive &&
-                      !running &&
-                      ["active", "warning"].includes(a.status);
-                    // PAUSE/RESUME: only when account is idle (not being processed by anyone)
+                    const canRun = !isActive && !running && ["active", "warning"].includes(a.status);
                     const canPause = !isActive;
-                    // DELETE: only when account is NOT actively processing by anyone
-                    // This is the key fix — disabled when ANY session is running this account
                     const canDelete = !isActive;
-                    // const rate      =  0 //a.stats?.successRate || 0;
+                    const accentColor = isActive ? (fromRemote ? "#00E5FF" : "#7C3AED") : rateColor(rate);
 
                     return (
-                      <Grid item xs={12} sm={6} md={4} key={a.email}>
-                        <Card
-                          sx={{
-                            border:
-                              isActive && jobSt.total > 0
-                                ? "1px solid rgba(124,58,237,0.45)"
-                                : "1px solid rgba(255,255,255,0.06)",
-                            height: "100%",
-                            transition: "border 0.2s",
-                          }}>
-                          <CardContent>
-                            {/* Header row */}
-                            <Box
-                              sx={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                alignItems: "flex-start",
-                              }}>
-                              <Typography
-                                sx={{
-                                  fontSize: 12,
-                                  fontFamily: "DM Mono, monospace",
-                                  wordBreak: "break-all",
-                                  flex: 1,
-                                  mr: 1,
-                                }}>
-                                {a.email}
-                              </Typography>
-                              <Chip
-                                size="small"
-                                label={ a.status }
-                                color={
-                                  a.status === "active"
-                                       ? "success" : "default"
-                                }
-                                sx={{
-                                  fontSize: 10,
-                                  height: 20,
-                                  fontFamily: "DM Mono, monospace",
-                                  flexShrink: 0,
-                                }}
-                              />
-                            </Box>
+                      <Box key={a.email} sx={{
+                        p: 1.5,
+                        borderRadius: 2,
+                        bgcolor: isActive
+                          ? fromRemote ? "rgba(0,229,255,0.04)" : "rgba(124,58,237,0.06)"
+                          : "rgba(255,255,255,0.03)",
+                        border: "1px solid rgba(255,255,255,0.07)",
+                        // borderLeft: `3px solid ${accentColor}`,
+                        transition: "border 0.2s, background 0.2s",
+                      }}>
+                        {/* Top row: email + status */}
+                        <Box sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", mb: 0.75, gap: 1 }}>
+                          <Typography sx={{ fontSize: 11, fontFamily: "DM Mono, monospace", color: "#00E5FF",
+                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+                            {a.email}
+                          </Typography>
+                          <Box sx={{ display: "flex", gap: 0.5, flexShrink: 0 }}>
+                            <PhaseChip phase={jobSt.phase} />
+                            <StatusChip status={a.status} />
+                          </Box>
+                        </Box>
 
-                            {/* Owner (admin sees it) */}
-                            {isAdmin && a.owner && (
-                              <Typography
-                                variant="caption"
-                                sx={{
-                                  fontSize: 9,
-                                  color: "text.disabled",
-                                  fontFamily: "DM Mono, monospace",
-                                  display: "block",
-                                  mb: 1,
-                                }}>
-                                owner: {a.owner}
-                              </Typography>
-                            )}
+                        {/* Owner (admin) */}
+                        {isAdmin && a.owner && (
+                          <Typography sx={{ fontSize: 9, color: "text.disabled", fontFamily: "DM Mono, monospace", mb: 0.75 }}>
+                            owner: {a.owner}
+                          </Typography>
+                        )}
 
-                            {/* Rate */}
-                            <Box
-                              sx={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 1,
-                                mb: 1,
-                              }}>
-                              <Typography
-                                variant="caption"
-                                color="text.secondary"
-                                sx={{ display: "block" }}>
-                                {(
-                                  a.stats?.emailsProcessed || 0
-                                ).toLocaleString()}{" "}
-                                emails processed -{" "}
-                                {(a.stats?.pixelsFired || 0).toLocaleString()}{" "}
-                                beacons fired
-                              </Typography>
+                        {/* Stats pills row */}
+                        <Box sx={{ display: "flex", gap: 0.75, mb: 1, flexWrap: "wrap" }}>
+                          <Box sx={{ px: 0.75, py: 0.25, borderRadius: 1, bgcolor: "rgba(0,229,255,0.08)", border: "1px solid rgba(0,229,255,0.15)" }}>
+                            <Typography sx={{ fontSize: 11, fontWeight: 700, color: "#00E5FF", fontFamily: "DM Mono, monospace", lineHeight: 1.2 }}>
+                              {(a.stats?.emailsProcessed || 0).toLocaleString()}
+                            </Typography>
+                            <Typography sx={{ fontSize: 9, color: "rgba(255,255,255,0.3)", fontFamily: "DM Mono, monospace", lineHeight: 1.2 }}>emails</Typography>
+                          </Box>
+                          <Box sx={{ px: 0.75, py: 0.25, borderRadius: 1, bgcolor: "rgba(124,58,237,0.08)", border: "1px solid rgba(124,58,237,0.15)" }}>
+                            <Typography sx={{ fontSize: 11, fontWeight: 700, color: "#7C3AED", fontFamily: "DM Mono, monospace", lineHeight: 1.2 }}>
+                              {(a.stats?.pixelsFired || 0).toLocaleString()}
+                            </Typography>
+                            <Typography sx={{ fontSize: 9, color: "rgba(255,255,255,0.3)", fontFamily: "DM Mono, monospace", lineHeight: 1.2 }}>beacons</Typography>
+                          </Box>
+                          <Box sx={{ px: 0.75, py: 0.25, borderRadius: 1, bgcolor: `${rateColor(rate)}10`, border: `1px solid ${rateColor(rate)}30` }}>
+                            <Typography sx={{ fontSize: 11, fontWeight: 700, color: rateColor(rate), fontFamily: "DM Mono, monospace", lineHeight: 1.2 }}>
+                              {rate}%
+                            </Typography>
+                            <Typography sx={{ fontSize: 9, color: "rgba(255,255,255,0.3)", fontFamily: "DM Mono, monospace", lineHeight: 1.2 }}>rate</Typography>
+                          </Box>
+                          <Spark data={trend} color={rateColor(rate)} />
+                        </Box>
 
-                              <PhaseChip phase={jobSt.phase} />
-                            </Box>
-
-                            {/* Live progress bar */}
-                            {isActive && jobSt.total > 0 && (
-                              <Box sx={{ mb: 1.5 }}>
-                                <Box
-                                  sx={{
-                                    display: "flex",
-                                    justifyContent: "space-between",
-                                    mb: 0.5,
-                                  }}>
-                                  {jobSt.runBy && (
-                                    <Box
-                                      sx={{
-                                        px: 1,
-                                        py: 0.2,
-                                        borderRadius: 1,
-                                        bgcolor: "rgba(0,229,255,0.08)",
-                                        color: "#67E8F9",
-                                        fontSize: 9,
-                                        fontFamily: "DM Mono, monospace",
-                                      }}>
-                                      by {jobSt.runBy}
-                                    </Box>
-                                  )}
-                                  {jobSt.message && (
-                                    <Typography
-                                      variant="caption"
-                                      color="text.disabled"
-                                      sx={{ fontSize: 9 }}>
-                                      {jobSt.message}
-                                    </Typography>
-                                  )}
-                                </Box>
-
-                                <Box
-                                  sx={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: 1,
-                                    mt: 0.75,
-                                  }}>
-                                  <LinearProgress
-                                    variant="determinate"
-                                    value={progress}
-                                    sx={{
-                                      flex: 1,
-                                      height: 3,
-                                      borderRadius: 2,
-                                      bgcolor: "rgba(255,255,255,0.06)",
-                                      "& .MuiLinearProgress-bar": {
-                                        bgcolor: fromRemote
-                                          ? "#00E5FF"
-                                          : "#7C3AED",
-                                      },
-                                    }}
-                                  />
-                                  <Typography
-                                    variant="caption"
-                                    sx={{
-                                      fontSize: 9,
-                                      color: fromRemote ? "#00E5FF" : "#7C3AED",
-                                      fontFamily: "DM Mono, monospace",
-                                      flexShrink: 0,
-                                    }}>
-                                    {jobSt.done}/{jobSt.total}
-                                  </Typography>
-                                </Box>
-                              </Box>
-                            )}
-
-                            {/* ── Action buttons ── */}
-                            <Box sx={{ display: "flex", gap: 1 }}>
-                              {/* RUNNING → only Stop */}
-                              {canStop ? (
-                                <Tooltip title="Stop after current batch">
-                                  <Button
-                                    fullWidth
-                                    size="small"
-                                    variant="outlined"
-                                    startIcon={<StopIcon />}
-                                    onClick={() => handleStopOne(a.email)}
-                                    sx={{
-                                      color: "#EF4444",
-                                      borderColor: "rgba(239,68,68,0.4)",
-                                      fontSize: 11,
-                                      "&:hover": {
-                                        borderColor: "#EF4444",
-                                        bgcolor: "rgba(239,68,68,0.08)",
-                                      },
-                                    }}>
-                                    Stop
-                                  </Button>
-                                </Tooltip>
-                              ) : isActive ? (
-                                /* Account running in another session — admin gets amber signal button, others see disabled */
-                                fromRemote && isAdmin ? (
-                                  <Tooltip
-                                    title={`Signal ${jobSt.runBy || "session"} to stop ${a.email}`}>
-                                    <Button
-                                      fullWidth
-                                      size="small"
-                                      variant="outlined"
-                                      startIcon={<StopIcon />}
-                                      onClick={() =>
-                                        setAdmStopTarget({
-                                          email: a.email,
-                                          runBy: jobSt.runBy || "",
-                                        })
-                                      }
-                                      sx={{
-                                        color: "#F59E0B",
-                                        borderColor: "rgba(245,158,11,0.4)",
-                                        fontSize: 11,
-                                        "&:hover": {
-                                          borderColor: "#F59E0B",
-                                          bgcolor: "rgba(245,158,11,0.08)",
-                                        },
-                                      }}>
-                                      Stop
-                                    </Button>
-                                  </Tooltip>
-                                ) : (
-                                  <Tooltip
-                                    title={
-                                      fromRemote
-                                        ? `Running by ${jobSt.runBy || "another session"}`
-                                        : "Stop All in progress — use toolbar"
-                                    }>
-                                    <Button
-                                      fullWidth
-                                      size="small"
-                                      variant="outlined"
-                                      startIcon={<StopIcon />}
-                                      onClick={() => setStopTarget(a.email)}
-                                      sx={{
-                                        color: "#EF4444",
-                                        borderColor: "rgba(239,68,68,0.4)",
-                                        fontSize: 11,
-                                        "&:hover": {
-                                          borderColor: "#EF4444",
-                                          bgcolor: "rgba(239,68,68,0.08)",
-                                        },
-                                      }}>
-                                      Stop
-                                    </Button>
-                                  </Tooltip>
-                                )
-                              ) : (
-                                /* Idle — show Run button */
-                                <Tooltip
-                                  title={
-                                    runAllMode
-                                      ? "Run All in progress — use Stop All in toolbar"
-                                      : running
-                                        ? "Another account is running"
-                                        : !["active", "warning"].includes(
-                                              a.status,
-                                            )
-                                          ? "Resume account first"
-                                          : `Run ${a.email}`
-                                  }>
-                                  <Button
-                                    fullWidth
-                                    size="small"
-                                    variant="outlined"
-                                    startIcon={<PlayArrowIcon />}
-                                    onClick={() => handleRunOne(a)}
-                                    disabled={!canRun}
-                                    sx={{
-                                      color: "#00E5FF",
-                                      borderColor: "rgba(0,229,255,0.3)",
-                                      fontSize: 11,
-                                      "&:hover": {
-                                        borderColor: "#00E5FF",
-                                        bgcolor: "rgba(0,229,255,0.08)",
-                                      },
-                                      "&.Mui-disabled": { opacity: 0.3 },
-                                    }}>
-                                    Run
-                                  </Button>
-                                </Tooltip>
+                        {/* Live progress */}
+                        {isActive && jobSt.total > 0 && (
+                          <Box sx={{ mb: 1 }}>
+                            <Box sx={{ display: "flex", justifyContent: "space-between", mb: 0.5 }}>
+                              {jobSt.runBy && (
+                                <Typography sx={{ fontSize: 9, color: "#67E8F9", fontFamily: "DM Mono, monospace",
+                                  px: 0.75, py: 0.1, borderRadius: 0.5, bgcolor: "rgba(0,229,255,0.08)" }}>
+                                  by {jobSt.runBy}
+                                </Typography>
                               )}
-
-                              {/* Pause / Resume — disabled when account is actively processing */}
-                              <Tooltip
-                                title={
-                                  !canPause
-                                    ? isActive
-                                      ? "Stop the run first before pausing"
-                                      : ""
-                                    : ["active", "warning"].includes(a.status)
-                                      ? "Pause account"
-                                      : "Resume account"
-                                }>
-                                <Button
-                                  fullWidth
-                                  size="small"
-                                  variant="outlined"
-                                  startIcon={
-                                    ["active", "warning"].includes(a.status) ? (
-                                      <PauseIcon />
-                                    ) : (
-                                      <ReplayIcon />
-                                    )
-                                  }
-                                  onClick={() => handleToggle(a)}
-                                  disabled={!canPause}
-                                  sx={{
-                                    color: ["active", "warning"].includes(
-                                      a.status,
-                                    )
-                                      ? "#F59E0B"
-                                      : "#10B981",
-                                    borderColor: ["active", "warning"].includes(
-                                      a.status,
-                                    )
-                                      ? "rgba(245,158,11,0.3)"
-                                      : "rgba(16,185,129,0.3)",
-                                    fontSize: 11,
-                                    "&:hover": {
-                                      borderColor: [
-                                        "active",
-                                        "warning",
-                                      ].includes(a.status)
-                                        ? "#F59E0B"
-                                        : "#10B981",
-                                      bgcolor: ["active", "warning"].includes(
-                                        a.status,
-                                      )
-                                        ? "rgba(245,158,11,0.08)"
-                                        : "rgba(16,185,129,0.08)",
-                                    },
-                                  }}>
-                                  {["active", "warning"].includes(a.status)
-                                    ? "Pause"
-                                    : "Resume"}
-                                </Button>
-                              </Tooltip>
-
-                              {/* Delete */}
-                              <Tooltip
-                                title={
-                                  !canDelete
-                                    ? "Cannot delete while account is processing — stop the run first"
-                                    : "Disconnect account"
-                                }>
-                                <span>
-                                  <IconButton
-                                    size="small"
-                                    onClick={() =>
-                                      canDelete && setConfirmEmail(a.email)
-                                    }
-                                    disabled={!canDelete}
-                                    sx={{
-                                      color: "#EF4444",
-                                      bgcolor: "rgba(239,68,68,0.08)",
-                                      borderRadius: 1.5,
-                                      "&:hover": {
-                                        bgcolor: "rgba(239,68,68,0.18)",
-                                      },
-                                      "&.Mui-disabled": { opacity: 0.3 },
-                                    }}>
-                                    <DeleteOutlineIcon sx={{ fontSize: 16 }} />
-                                  </IconButton>
-                                </span>
-                              </Tooltip>
+                              {jobSt.message && <Typography variant="caption" color="text.disabled" sx={{ fontSize: 9 }}>{jobSt.message}</Typography>}
                             </Box>
-                          </CardContent>
-                        </Card>
-                      </Grid>
+                            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                              <Box sx={{ flex: 1, height: 3, borderRadius: 2, bgcolor: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
+                                <Box sx={{ width: `${progress}%`, height: "100%", bgcolor: fromRemote ? "#00E5FF" : "#7C3AED", borderRadius: 2, transition: "width 0.4s ease" }} />
+                              </Box>
+                              <Typography sx={{ fontSize: 9, color: fromRemote ? "#00E5FF" : "#7C3AED", fontFamily: "DM Mono, monospace", flexShrink: 0 }}>
+                                {jobSt.done}/{jobSt.total}
+                              </Typography>
+                            </Box>
+                          </Box>
+                        )}
+
+                        {/* Action buttons */}
+                        <Box sx={{ display: "flex", gap: 0.75 }}>
+                          {canStop ? (
+                            <Button size="small" startIcon={<StopIcon sx={{ fontSize: 12 }} />} onClick={() => handleStopOne(a.email)}
+                              sx={{ flex: 1, fontSize: 10, color: "#EF4444", bgcolor: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 1.5, py: 0.5, textTransform: "none",
+                                "&:hover": { bgcolor: "rgba(239,68,68,0.15)" } }}>Stop</Button>
+                          ) : isActive ? (
+                            fromRemote && isAdmin ? (
+                              <Button size="small" startIcon={<StopIcon sx={{ fontSize: 12 }} />}
+                                onClick={() => setAdmStopTarget({ email: a.email, runBy: jobSt.runBy || "" })}
+                                sx={{ flex: 1, fontSize: 10, color: "#F59E0B", bgcolor: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 1.5, py: 0.5, textTransform: "none" }}>Stop</Button>
+                            ) : (
+                              <Button size="small" startIcon={<StopIcon sx={{ fontSize: 12 }} />} disabled
+                                sx={{ flex: 1, fontSize: 10, color: "#EF4444", bgcolor: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.15)", borderRadius: 1.5, py: 0.5, textTransform: "none", "&.Mui-disabled": { opacity: 0.3 } }}>Stop</Button>
+                            )
+                          ) : (
+                            <Button size="small" startIcon={<PlayArrowIcon sx={{ fontSize: 12 }} />} onClick={() => handleRunOne(a)} disabled={!canRun}
+                              sx={{ flex: 1, fontSize: 10, color: "#00E5FF", bgcolor: "rgba(0,229,255,0.08)", border: "1px solid rgba(0,229,255,0.25)", borderRadius: 1.5, py: 0.5, textTransform: "none",
+                                "&:hover": { bgcolor: "rgba(0,229,255,0.15)" }, "&.Mui-disabled": { opacity: 0.3 } }}>Run</Button>
+                          )}
+
+                          <Button size="small"
+                            startIcon={["active","warning"].includes(a.status) ? <PauseIcon sx={{ fontSize: 12 }} /> : <ReplayIcon sx={{ fontSize: 12 }} />}
+                            onClick={() => handleToggle(a)} disabled={!canPause}
+                            sx={{ flex: 1, fontSize: 10,
+                              color: ["active","warning"].includes(a.status) ? "#F59E0B" : "#10B981",
+                              bgcolor: ["active","warning"].includes(a.status) ? "rgba(245,158,11,0.08)" : "rgba(16,185,129,0.08)",
+                              border: `1px solid ${["active","warning"].includes(a.status) ? "rgba(245,158,11,0.25)" : "rgba(16,185,129,0.25)"}`,
+                              borderRadius: 1.5, py: 0.5, textTransform: "none", "&.Mui-disabled": { opacity: 0.3 } }}>
+                            {["active","warning"].includes(a.status) ? "Pause" : "Resume"}
+                          </Button>
+
+                          <Tooltip title={!canDelete ? "Stop the run first" : "Disconnect"}>
+                            <span>
+                              <IconButton size="small" onClick={() => canDelete && setConfirmEmail(a.email)} disabled={!canDelete}
+                                sx={{ color: "#EF4444", bgcolor: "rgba(239,68,68,0.08)", borderRadius: 1.5, border: "1px solid rgba(239,68,68,0.2)",
+                                  "&:hover": { bgcolor: "rgba(239,68,68,0.18)" }, "&.Mui-disabled": { opacity: 0.3 } }}>
+                                <DeleteOutlineIcon sx={{ fontSize: 15 }} />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                        </Box>
+                      </Box>
                     );
                   })}
-                </Grid>
+                </Box>
               )}
             </>
           )}

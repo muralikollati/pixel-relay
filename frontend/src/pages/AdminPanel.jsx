@@ -8,12 +8,13 @@
  *   5. Completed Runs      (admin + superadmin) — today's finished runs
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { toUTC, dateFormatter, dateOnlyFormatter } from '../utils/helper';
 import {
   Box, Card, CardContent, Typography, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Paper, Chip, IconButton,
   Button, TextField, Dialog, DialogTitle, DialogContent, DialogActions,
   Select, MenuItem, FormControl, InputLabel, Switch, FormControlLabel,
-  Tooltip, Divider, Grid, Slider, CircularProgress,
+  Tooltip, Divider, Grid, Slider, CircularProgress, useTheme, useMediaQuery,
 } from '@mui/material';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import AddIcon           from '@mui/icons-material/Add';
@@ -28,7 +29,6 @@ import {
   resetPassword, getPermissions, updatePermissions,
   getWorkerConfig, patchWorkerConfig, getActivity,
 } from '../utils/api';
-import { dateFormatter } from '../utils/helper';
 
 const ROLES       = ['superadmin', 'admin', 'user'];
 const ROLE_LABELS = { superadmin: 'Super Admin', admin: 'Admin', user: 'User' };
@@ -55,6 +55,8 @@ const phaseColor = {
 export default function AdminPanel({ onToast, user }) {
   const isSuperAdmin    = user?.role === 'superadmin';
   const canManageUsers  = isSuperAdmin || !!(user?.permissions?.canManageUsers);
+  const theme           = useTheme();
+  const isMobile        = useMediaQuery(theme.breakpoints.down('sm'));
 
   // ── User management state ───────────────────────────────────────────────────
   const [users,       setUsers]       = useState([]);
@@ -320,7 +322,7 @@ export default function AdminPanel({ onToast, user }) {
                         {c.spam > 0 ? `+${c.spam}` : '—'}
                       </TableCell>
                       <TableCell sx={{ fontSize: 10, color: 'text.disabled', fontFamily: 'DM Mono, monospace', whiteSpace: 'nowrap' }}>
-                        {new Date(c.finishedAt).toLocaleTimeString()}
+                        {toUTC(c.finishedAt).toLocaleTimeString()}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -493,72 +495,139 @@ export default function AdminPanel({ onToast, user }) {
                 sx={{ mb: 2, width: 240, '& .MuiInputBase-input': { fontSize: 12 } }}
               /> */}
 
-              <TableContainer component={Paper} elevation={0} sx={{ bgcolor: 'transparent' }}>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      {['Username', 'Role', 'Last Login', 'Created', 'Actions'].map((col, i) => (
-                        <TableCell key={col || i} sx={{ color: 'text.disabled', fontSize: 10, fontFamily: 'DM Mono, monospace', letterSpacing: '0.08em' }}>{col}</TableCell>
-                      ))}
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {users
-                      .filter(u => isSuperAdmin || u.role !== 'superadmin')
-                      .filter(u => !userSearch || u.username.toLowerCase().includes(userSearch.toLowerCase()))
-                      .sort((a, b) => {
-                        if (a.username === user?.username) return -1;
-                        if (b.username === user?.username) return 1;
-                        return a.username.localeCompare(b.username);
-                      })
-                      .map(u => (
-                      <TableRow key={u.username} sx={{ '&:hover': { bgcolor: 'rgba(255,255,255,0.02)' } }}>
-                        <TableCell sx={{ fontFamily: 'DM Mono, monospace', fontSize: 12 }}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              {isMobile ? (
+                /* ── Mobile: user cards ── */
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  {users
+                    .filter(u => isSuperAdmin || u.role !== 'superadmin')
+                    .filter(u => !userSearch || u.username.toLowerCase().includes(userSearch.toLowerCase()))
+                    .sort((a, b) => {
+                      if (a.username === user?.username) return -1;
+                      if (b.username === user?.username) return 1;
+                      return a.username.localeCompare(b.username);
+                    })
+                    .map(u => (
+                    <Box key={u.username} sx={{
+                      p: 1.5,
+                      borderRadius: 2,
+                      bgcolor: 'rgba(255,255,255,0.03)',
+                      border: '1px solid rgba(255,255,255,0.07)',
+                      borderLeft: `3px solid ${u.role === 'superadmin' ? '#8a1d1d' : u.role === 'admin' ? '#F59E0B' : '#0c4d37'}`,
+                    }}>
+                      {/* Top: username + role selector */}
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Typography sx={{ fontFamily: 'DM Mono, monospace', fontSize: 13, fontWeight: 700 }}>
                             {u.username}
-                            {u.username === user?.username && (
-                              <Chip label="You" size="small" sx={{ height: 16, fontSize: 9, fontFamily: 'DM Mono, monospace', bgcolor: 'rgba(0,229,255,0.1)', color: '#00E5FF', border: '1px solid rgba(0,229,255,0.2)' }} />
-                            )}
-                          </Box>
-                        </TableCell>
-                        <TableCell>
-                          <FormControl size="small" variant="standard">
-                            <Select value={u.role} onChange={e => handleRoleChange(u.username, e.target.value)}
-                              disableUnderline sx={{ fontFamily: 'DM Mono, monospace', fontSize: 11 }}>
-                              {ROLES.filter(r => isSuperAdmin || r !== 'superadmin').map(r => (
-                                <MenuItem key={r} value={r} sx={{ fontSize: 11 }}>{ROLE_LABELS[r]}</MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
-                        </TableCell>
-                        <TableCell sx={{ fontSize: 11, color: 'text.secondary' }}>
-                          {u.lastLogin ? dateFormatter(u.lastLogin) : '—'}
-                        </TableCell>
-                        <TableCell sx={{ fontSize: 11, color: 'text.secondary' }}>
-                          {dateFormatter(u.createdAt)}
-                        </TableCell>
-                        <TableCell>
-                          <Box sx={{ display: 'flex', gap: 0.5 }}>
-                            <Tooltip title="Reset password">
-                              <IconButton size="small" onClick={() => { setResetTarget(u.username); setResetOpen(true); }}
-                                sx={{ color: '#F59E0B', bgcolor: 'rgba(245,158,11,0.08)', borderRadius: 1.5 }}>
-                                <LockResetIcon sx={{ fontSize: 14 }} />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Delete user">
-                              <IconButton size="small" onClick={() => setDeleteTarget(u.username)}
-                                sx={{ color: '#EF4444', bgcolor: 'rgba(239,68,68,0.08)', borderRadius: 1.5 }}
-                                disabled={u.username === user?.username}>
-                                <DeleteOutlineIcon sx={{ fontSize: 14 }} />
-                              </IconButton>
-                            </Tooltip>
-                          </Box>
-                        </TableCell>
+                          </Typography>
+                          {u.username === user?.username && (
+                            <Chip label="You" size="small" sx={{ height: 15, fontSize: 9, fontFamily: 'DM Mono, monospace', bgcolor: 'rgba(0,229,255,0.1)', color: '#00E5FF', border: '1px solid rgba(0,229,255,0.2)' }} />
+                          )}
+                        </Box>
+                        <FormControl size="small" variant="standard">
+                          <Select value={u.role} onChange={e => handleRoleChange(u.username, e.target.value)}
+                            disableUnderline sx={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: u.role === 'superadmin' ? '#EF4444' : u.role === 'admin' ? '#F59E0B' : '#10B981' }}>
+                            {ROLES.filter(r => isSuperAdmin || r !== 'superadmin').map(r => (
+                              <MenuItem key={r} value={r} sx={{ fontSize: 11 }}>{ROLE_LABELS[r]}</MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      </Box>
+                      {/* Meta row */}
+                      <Box sx={{ display: 'flex', gap: 2, mb: 1.25 }}>
+                        <Box>
+                          <Typography sx={{ fontSize: 9, color: 'text.disabled', fontFamily: 'DM Mono, monospace', mb: 0.25 }}>CREATED</Typography>
+                          <Typography sx={{ fontSize: 10, color: 'text.secondary', fontFamily: 'DM Mono, monospace' }}>{dateOnlyFormatter(u.createdAt)}</Typography>
+                        </Box>
+                        <Box>
+                          <Typography sx={{ fontSize: 9, color: 'text.disabled', fontFamily: 'DM Mono, monospace', mb: 0.25 }}>LAST LOGIN</Typography>
+                          <Typography sx={{ fontSize: 10, color: 'text.secondary', fontFamily: 'DM Mono, monospace' }}>{u.lastLogin ? dateFormatter(u.lastLogin) : '—'}</Typography>
+                        </Box>
+                      </Box>
+                      {/* Actions */}
+                      <Box sx={{ display: 'flex', gap: 1 }}>
+                        <Button size="small" startIcon={<LockResetIcon sx={{ fontSize: 13 }} />}
+                          onClick={() => { setResetTarget(u.username); setResetOpen(true); }}
+                          sx={{ fontSize: 10, color: '#F59E0B', bgcolor: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 1.5, py: 0.4, px: 1, minWidth: 0, textTransform: 'none' }}>
+                          Reset pw
+                        </Button>
+                        <Button size="small" startIcon={<DeleteOutlineIcon sx={{ fontSize: 13 }} />}
+                          onClick={() => setDeleteTarget(u.username)}
+                          sx={{ fontSize: 10, color: '#EF4444', bgcolor: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 1.5, py: 0.4, px: 1, minWidth: 0, textTransform: 'none' }}>
+                          Delete
+                        </Button>
+                      </Box>
+                    </Box>
+                  ))}
+                </Box>
+              ) : (
+                /* ── Desktop: table ── */
+                <TableContainer component={Paper} elevation={0} sx={{ bgcolor: 'transparent' }}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        {['Username', 'Role', 'Last Login', 'Created', 'Actions'].map((col, i) => (
+                          <TableCell key={col || i} sx={{ color: 'text.disabled', fontSize: 10, fontFamily: 'DM Mono, monospace', letterSpacing: '0.08em' }}>{col}</TableCell>
+                        ))}
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
+                    </TableHead>
+                    <TableBody>
+                      {users
+                        .filter(u => isSuperAdmin || u.role !== 'superadmin')
+                        .filter(u => !userSearch || u.username.toLowerCase().includes(userSearch.toLowerCase()))
+                        .sort((a, b) => {
+                          if (a.username === user?.username) return -1;
+                          if (b.username === user?.username) return 1;
+                          return a.username.localeCompare(b.username);
+                        })
+                        .map(u => (
+                        <TableRow key={u.username} sx={{ '&:hover': { bgcolor: 'rgba(255,255,255,0.02)' } }}>
+                          <TableCell sx={{ fontFamily: 'DM Mono, monospace', fontSize: 12 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              {u.username}
+                              {u.username === user?.username && (
+                                <Chip label="You" size="small" sx={{ height: 16, fontSize: 9, fontFamily: 'DM Mono, monospace', bgcolor: 'rgba(0,229,255,0.1)', color: '#00E5FF', border: '1px solid rgba(0,229,255,0.2)' }} />
+                              )}
+                            </Box>
+                          </TableCell>
+                          <TableCell>
+                            <FormControl size="small" variant="standard">
+                              <Select value={u.role} onChange={e => handleRoleChange(u.username, e.target.value)}
+                                disableUnderline sx={{ fontFamily: 'DM Mono, monospace', fontSize: 11 }}>
+                                {ROLES.filter(r => isSuperAdmin || r !== 'superadmin').map(r => (
+                                  <MenuItem key={r} value={r} sx={{ fontSize: 11 }}>{ROLE_LABELS[r]}</MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                          </TableCell>
+                          <TableCell sx={{ fontSize: 11, color: 'text.secondary' }}>
+                            {u.lastLogin ? dateFormatter(u.lastLogin) : '—'}
+                          </TableCell>
+                          <TableCell sx={{ fontSize: 11, color: 'text.secondary' }}>
+                            {dateOnlyFormatter(u.createdAt)}
+                          </TableCell>
+                          <TableCell>
+                            <Box sx={{ display: 'flex', gap: 0.5 }}>
+                              <Tooltip title="Reset password">
+                                <IconButton size="small" onClick={() => { setResetTarget(u.username); setResetOpen(true); }}
+                                  sx={{ color: '#F59E0B', bgcolor: 'rgba(245,158,11,0.08)', borderRadius: 1.5 }}>
+                                  <LockResetIcon sx={{ fontSize: 14 }} />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Delete user">
+                                <IconButton size="small" onClick={() => setDeleteTarget(u.username)}
+                                  sx={{ color: '#EF4444', bgcolor: 'rgba(239,68,68,0.08)', borderRadius: 1.5 }}>
+                                  <DeleteOutlineIcon sx={{ fontSize: 14 }} />
+                                </IconButton>
+                              </Tooltip>
+                            </Box>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
             </CardContent>
           </Card>
 
@@ -618,7 +687,7 @@ export default function AdminPanel({ onToast, user }) {
             autoFocus
             fullWidth
             error={usernameAlreadyExists}
-            helperText={usernameAlreadyExists && 'Username already exists'}
+            helperText={usernameAlreadyExists ? 'Username already exists' : ' '}
             FormHelperTextProps={{ sx: { fontSize: 11, mx: 0 } }}
           />
           <TextField label="Password" type="password" size="small" value={newPassword} onChange={e => setNewPassword(e.target.value)}

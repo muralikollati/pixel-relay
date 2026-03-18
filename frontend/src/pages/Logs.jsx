@@ -68,7 +68,7 @@ export default function Logs({ accountStatuses = {} }) {
 
           <Paper elevation={0} sx={{ bgcolor: 'rgba(0,0,0,0.3)', borderRadius: 1, height: { xs: 320, md: 480 }, overflow: 'auto', fontFamily: 'DM Mono, monospace', fontSize: 12, border: '1px solid rgba(255,255,255,0.04)' }}>
             {log.length === 0 ? (
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', paddingLeft: '10px' }}>
                 <Typography variant="caption" color="text.disabled">
                   No activity yet. Click Run All on the Dashboard to start.
                 </Typography>
