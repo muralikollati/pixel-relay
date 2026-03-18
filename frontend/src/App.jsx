@@ -14,7 +14,7 @@ import RunHistory      from './pages/RunHistory';
 import Login           from './pages/Login';
 import { useStats }    from './hooks/useStats';
 import { useWorker }   from './hooks/useWorker';
-import { getMe, getActivity, logoutApi } from './utils/api';
+import { getMe, getActivity, postActivity, logoutApi } from './utils/api';
 
 const theme = createTheme({
   palette: {
@@ -87,6 +87,16 @@ export default function App() {
     const id = setInterval(refresh, 30_000);
     return () => clearInterval(id);
   }, [user?.username]); // only restart when username changes — not on every user object mutation
+
+  // ── Clear stale activity on startup ────────────────────────────────────────
+  // If the user reloaded mid-run, the backend still has running:true for this
+  // session. sendBeacon fires on unload but can fail (no headers, race condition,
+  // browser kill). This is the guaranteed fix: on every page load, immediately
+  // POST running:false so any stuck "processing" indicator clears right away.
+  useEffect(() => {
+    if (!user) return;
+    postActivity({ running: false, accounts: [], completed: [] }).catch(() => {});
+  }, [user?.username]);
 
   // ── FIX #10 + #12: Single merged activity poll ──────────────────────────────
   // GET /worker/activity now returns both:
