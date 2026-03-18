@@ -28,6 +28,7 @@ import {
   resetPassword, getPermissions, updatePermissions,
   getWorkerConfig, patchWorkerConfig, getActivity,
 } from '../utils/api';
+import { dateFormatter } from '../utils/helper';
 
 const ROLES       = ['superadmin', 'admin', 'user'];
 const ROLE_LABELS = { superadmin: 'Super Admin', admin: 'Admin', user: 'User' };
@@ -123,8 +124,12 @@ export default function AdminPanel({ onToast, user }) {
   }, [load]);
 
   // ── User management handlers ────────────────────────────────────────────────
+  const usernameAlreadyExists = newUsername.trim().length > 0 &&
+    users.some(u => u.username.toLowerCase() === newUsername.trim().toLowerCase());
+
   const handleCreate = async () => {
     if (!newUsername || !newPassword) { onToast('Fill all fields', 'warning'); return; }
+    if (usernameAlreadyExists) { onToast(`Username "${newUsername}" is already taken`, 'warning'); return; }
     if (newPassword.length < 8) { onToast('Password must be at least 8 characters', 'warning'); return; }
     try {
       await createUser({ username: newUsername, password: newPassword, role: newRole });
@@ -527,10 +532,10 @@ export default function AdminPanel({ onToast, user }) {
                           </FormControl>
                         </TableCell>
                         <TableCell sx={{ fontSize: 11, color: 'text.secondary' }}>
-                          {u.lastLogin ? new Date(u.lastLogin).toLocaleString() : '—'}
+                          {u.lastLogin ? dateFormatter(u.lastLogin) : '—'}
                         </TableCell>
                         <TableCell sx={{ fontSize: 11, color: 'text.secondary' }}>
-                          {new Date(u.createdAt).toLocaleDateString()}
+                          {dateFormatter(u.createdAt)}
                         </TableCell>
                         <TableCell>
                           <Box sx={{ display: 'flex', gap: 0.5 }}>
@@ -542,7 +547,8 @@ export default function AdminPanel({ onToast, user }) {
                             </Tooltip>
                             <Tooltip title="Delete user">
                               <IconButton size="small" onClick={() => setDeleteTarget(u.username)}
-                                sx={{ color: '#EF4444', bgcolor: 'rgba(239,68,68,0.08)', borderRadius: 1.5 }}>
+                                sx={{ color: '#EF4444', bgcolor: 'rgba(239,68,68,0.08)', borderRadius: 1.5 }}
+                                disabled={u.username === user?.username}>
                                 <DeleteOutlineIcon sx={{ fontSize: 14 }} />
                               </IconButton>
                             </Tooltip>
@@ -604,7 +610,17 @@ export default function AdminPanel({ onToast, user }) {
       <Dialog open={createOpen} onClose={() => { setCreateOpen(false); setNewUsername(''); setNewPassword(''); setNewRole('user'); }} PaperProps={{ sx: { bgcolor: 'background.paper', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 3, minWidth: 360 } }}>
         <DialogTitle sx={{ fontSize: 15, fontWeight: 700 }}>Create New User</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '12px !important' }}>
-          <TextField label="Username" size="small" value={newUsername} onChange={e => setNewUsername(e.target.value)} autoFocus fullWidth />
+          <TextField
+            label="Username"
+            size="small"
+            value={newUsername}
+            onChange={e => setNewUsername(e.target.value)}
+            autoFocus
+            fullWidth
+            error={usernameAlreadyExists}
+            helperText={usernameAlreadyExists && 'Username already exists'}
+            FormHelperTextProps={{ sx: { fontSize: 11, mx: 0 } }}
+          />
           <TextField label="Password" type="password" size="small" value={newPassword} onChange={e => setNewPassword(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleCreate()} fullWidth />
           <FormControl size="small" fullWidth>
@@ -621,7 +637,7 @@ export default function AdminPanel({ onToast, user }) {
             sx={{ color: 'text.secondary', bgcolor: 'rgba(255,255,255,0.05)', '&:hover': { bgcolor: 'rgba(255,255,255,0.09)' } }}>
             Cancel
           </Button>
-          <Button size="small" variant="contained" onClick={handleCreate} disabled={!newUsername || !newPassword}>
+          <Button size="small" variant="contained" onClick={handleCreate} disabled={!newUsername || !newPassword || usernameAlreadyExists}>
             Create User
           </Button>
         </DialogActions>

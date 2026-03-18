@@ -21,7 +21,7 @@ db.exec(`
     username   TEXT PRIMARY KEY,
     password   TEXT NOT NULL,
     role       TEXT NOT NULL DEFAULT 'user',
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     last_login TEXT
   );
   CREATE TABLE IF NOT EXISTS permissions (
@@ -36,8 +36,8 @@ db.exec(`
     tokens     TEXT NOT NULL,
     status     TEXT NOT NULL DEFAULT 'active',
     stats      TEXT NOT NULL DEFAULT '{}',
-    added_at   TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    added_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
   );
   CREATE TABLE IF NOT EXISTS account_requests (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -45,7 +45,7 @@ db.exec(`
     owner         TEXT NOT NULL,
     tokens        TEXT,
     status        TEXT NOT NULL DEFAULT 'pending',
-    requested_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    requested_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     reviewed_at   TEXT,
     reviewed_by   TEXT,
     reject_reason TEXT
@@ -78,7 +78,7 @@ db.exec(`
     spam_rescued     INTEGER NOT NULL DEFAULT 0,
     started_at       TEXT,
     stopped_early    INTEGER NOT NULL DEFAULT 0,
-    finished_at      TEXT NOT NULL DEFAULT (datetime('now'))
+    finished_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
   );
   CREATE INDEX IF NOT EXISTS idx_rh_email ON run_history(email);
   CREATE INDEX IF NOT EXISTS idx_rh_finished ON run_history(finished_at);
@@ -140,7 +140,7 @@ for (const [role, perms] of Object.entries(DEFAULT_PERMS))
         owner         TEXT NOT NULL,
         tokens        TEXT,
         status        TEXT NOT NULL DEFAULT 'pending',
-        requested_at  TEXT NOT NULL DEFAULT (datetime('now')),
+        requested_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
         reviewed_at   TEXT,
         reviewed_by   TEXT,
         reject_reason TEXT
@@ -167,6 +167,35 @@ for (const [role, perms] of Object.entries(DEFAULT_PERMS))
       db.exec("ALTER TABLE run_history ADD COLUMN stopped_early INTEGER NOT NULL DEFAULT 0");
       console.log('[DB] run_history migration complete.');
     }
+  })();
+
+  // Migration 3: fix timestamps stored without UTC 'Z' suffix by datetime('now').
+  // SQLite's datetime('now') produces "2026-03-18 11:00:00" — no T, no Z.
+  // JS's new Date() then treats it as local time instead of UTC, so the IST
+  // offset (+05:30) is never applied and times appear 5h30m behind.
+  // Fix: append 'Z' to any stored value that looks like "YYYY-MM-DD HH:MM:SS".
+  (function() {
+    const isBareDateTime = v => v && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(v);
+    const toISO = v => v.replace(' ', 'T') + 'Z';
+
+    const fixCol = (table, col) => {
+      const rows = db.prepare(`SELECT rowid, ${col} FROM ${table} WHERE ${col} IS NOT NULL`).all();
+      const upd  = db.prepare(`UPDATE ${table} SET ${col}=? WHERE rowid=?`);
+      let fixed = 0;
+      for (const row of rows) {
+        if (isBareDateTime(row[col])) { upd.run(toISO(row[col]), row.rowid); fixed++; }
+      }
+      if (fixed) console.log(`[DB] Fixed ${fixed} bare timestamps in ${table}.${col}`);
+    };
+
+    fixCol('users',            'created_at');
+    fixCol('users',            'last_login');
+    fixCol('accounts',         'added_at');
+    fixCol('accounts',         'updated_at');
+    fixCol('account_requests', 'requested_at');
+    fixCol('account_requests', 'reviewed_at');
+    fixCol('run_history',      'started_at');
+    fixCol('run_history',      'finished_at');
   })();
 })();
 
