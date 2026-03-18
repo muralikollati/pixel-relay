@@ -1033,21 +1033,10 @@ export default function Dashboard({
                               </Typography>
                               <Chip
                                 size="small"
-                                label={
-                                  isActive && jobSt.total > 0
-                                    ? "Running"
-                                    : a.status
-                                }
+                                label={ a.status }
                                 color={
-                                  isActive && jobSt.total > 0
-                                    ? "secondary"
-                                    : a.status === "active"
-                                      ? "success"
-                                      : a.status === "warning"
-                                        ? "warning"
-                                        : a.status === "error"
-                                          ? "error"
-                                          : "default"
+                                  a.status === "active"
+                                       ? "success" : "default"
                                 }
                                 sx={{
                                   fontSize: 10,
@@ -1084,14 +1073,16 @@ export default function Dashboard({
                               <Typography
                                 variant="caption"
                                 color="text.secondary"
-                                sx={{ display: "block", mb: 1 }}>
+                                sx={{ display: "block" }}>
                                 {(
                                   a.stats?.emailsProcessed || 0
                                 ).toLocaleString()}{" "}
-                                emails processed ·{" "}
+                                emails processed -{" "}
                                 {(a.stats?.pixelsFired || 0).toLocaleString()}{" "}
                                 beacons fired
                               </Typography>
+
+                              <PhaseChip phase={jobSt.phase} />
                             </Box>
 
                             {/* Live progress bar */}
