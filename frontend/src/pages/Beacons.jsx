@@ -7,7 +7,7 @@
 import { useState } from 'react';
 import {
   Box, Card, CardContent, Typography, Grid, Chip, Table, TableBody, TableCell,
-  TableContainer, TableHead, TableRow, Paper, Tooltip, IconButton,
+  TableContainer, TableHead, TableRow, Paper, Tooltip, IconButton, useTheme, useMediaQuery,
 } from '@mui/material';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 
@@ -109,6 +109,8 @@ export default function Beacons({ data, beaconSamples = {} }) {
   const totalEmails  = data?.summary?.totalEmails   || 0;
   const accounts     = data?.accounts               || [];
   const avgBeaconsPerEmail = totalEmails > 0 ? (totalBeacons / totalEmails).toFixed(1) : '—';
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   return (
     <Box>
@@ -160,32 +162,48 @@ export default function Beacons({ data, beaconSamples = {} }) {
             ))}
           </Box>
 
-          {/* Firing method table */}
+          {/* Firing method table / cards */}
           <Card>
             <CardContent>
               <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'DM Mono, monospace', letterSpacing: '0.08em', display: 'block', mb: 2, fontSize: 11 }}>
                 HOW EACH VECTOR FIRES
               </Typography>
-              <TableContainer component={Paper} elevation={0} sx={{ bgcolor: 'transparent' }}>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      {['Type', 'Browser API', 'Why'].map(h => (
-                        <TableCell key={h} sx={{ color: 'text.disabled', fontSize: 10, fontFamily: 'DM Mono, monospace', py: 0.75 }}>{h}</TableCell>
-                      ))}
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {FIRING.map(f => (
-                      <TableRow key={f.type} sx={{ '&:hover': { bgcolor: 'rgba(255,255,255,0.02)' } }}>
-                        <TableCell sx={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#00E5FF', py: 1 }}>{f.type}</TableCell>
-                        <TableCell sx={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#E5E7EB', py: 1 }}>{f.method}</TableCell>
-                        <TableCell sx={{ fontSize: 10, color: 'text.secondary', py: 1 }}>{f.why}</TableCell>
+              {isMobile ? (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  {FIRING.map(f => (
+                    <Box key={f.type} sx={{ p: 1.25, borderRadius: 1.5, bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                        <Typography sx={{ fontSize: 10, fontFamily: 'DM Mono, monospace', color: '#00E5FF' }}>{f.type}</Typography>
+                        <Box sx={{ px: 0.75, py: 0.15, borderRadius: 1, bgcolor: 'rgba(124,58,237,0.12)', border: '1px solid rgba(124,58,237,0.2)' }}>
+                          <Typography sx={{ fontSize: 9, fontFamily: 'DM Mono, monospace', color: '#A78BFA' }}>{f.method}</Typography>
+                        </Box>
+                      </Box>
+                      <Typography sx={{ fontSize: 10, color: 'text.secondary' }}>{f.why}</Typography>
+                    </Box>
+                  ))}
+                </Box>
+              ) : (
+                <TableContainer component={Paper} elevation={0} sx={{ bgcolor: 'transparent' }}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        {['Type', 'Browser API', 'Why'].map(h => (
+                          <TableCell key={h} sx={{ color: 'text.disabled', fontSize: 10, fontFamily: 'DM Mono, monospace', py: 0.75 }}>{h}</TableCell>
+                        ))}
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
+                    </TableHead>
+                    <TableBody>
+                      {FIRING.map(f => (
+                        <TableRow key={f.type} sx={{ '&:hover': { bgcolor: 'rgba(255,255,255,0.02)' } }}>
+                          <TableCell sx={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#00E5FF', py: 1 }}>{f.type}</TableCell>
+                          <TableCell sx={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#E5E7EB', py: 1 }}>{f.method}</TableCell>
+                          <TableCell sx={{ fontSize: 10, color: 'text.secondary', py: 1 }}>{f.why}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
             </CardContent>
           </Card>
         </Grid>

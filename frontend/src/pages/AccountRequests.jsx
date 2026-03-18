@@ -6,12 +6,13 @@
  * approve all pending, or approve all pending for a specific user.
  */
 import { useState, useEffect, useCallback } from 'react';
+import { toUTC, dateFormatter, dateOnlyFormatter } from '../utils/helper';
 import {
   Box, Card, CardContent, Typography, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Paper, Chip, IconButton,
   Button, Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Tooltip, Divider, Badge, CircularProgress, Select,
-  MenuItem, FormControl, InputLabel,
+  MenuItem, FormControl, InputLabel, useTheme, useMediaQuery,
 } from '@mui/material';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import CancelOutlinedIcon     from '@mui/icons-material/CancelOutlined';
@@ -25,7 +26,6 @@ import {
   getAccountRequests, approveRequest, rejectRequest,
   approveAllRequests, approveUserRequests, deleteAccountRequest,
 } from '../utils/api';
-import { dateFormatter } from '../utils/helper';
 
 const STATUS_COLOR = {
   pending:  { color: '#F59E0B', bg: 'rgba(245,158,11,0.1)',  label: 'Pending'  },
@@ -43,6 +43,8 @@ function StatusChip({ status }) {
 }
 
 export default function AccountRequests({ onToast }) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [requests,      setRequests]      = useState([]);
   const [loading,       setLoading]       = useState(true);
   const [filterStatus,  setFilterStatus]  = useState('all');
@@ -248,7 +250,86 @@ export default function AccountRequests({ onToast }) {
             <Typography variant="caption" color="text.disabled" sx={{ display: 'block', textAlign: 'center', py: 4 }}>
               No requests found
             </Typography>
+          ) : isMobile ? (
+            /* ── Mobile: request cards ── */
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
+              {filtered.map(r => {
+                const statusColor = r.status === 'approved' ? '#10B981' : r.status === 'pending' ? '#F59E0B' : '#EF4444';
+                return (
+                  <Box key={r.email} sx={{
+                    p: 1.5, borderRadius: 2,
+                    bgcolor: 'rgba(255,255,255,0.03)',
+                    border: '1px solid rgba(255,255,255,0.07)',
+                    borderLeft: `3px solid ${statusColor}`,
+                  }}>
+                    {/* Email + status */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.75, gap: 1 }}>
+                      <Typography sx={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: '#00E5FF',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                        {r.email}
+                      </Typography>
+                      <StatusChip status={r.status} />
+                    </Box>
+                    {/* Reject reason if any */}
+                    {r.rejectReason && (
+                      <Typography sx={{ fontSize: 10, color: '#EF4444', mb: 0.75 }}>↳ {r.rejectReason}</Typography>
+                    )}
+                    {/* Meta */}
+                    <Box sx={{ display: 'flex', gap: 2, mb: 1.25 }}>
+                      <Box>
+                        <Typography sx={{ fontSize: 9, color: 'text.disabled', fontFamily: 'DM Mono, monospace' }}>BY</Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <PersonIcon sx={{ fontSize: 11, color: 'text.disabled' }} />
+                          <Typography sx={{ fontSize: 10, fontFamily: 'DM Mono, monospace' }}>{r.owner}</Typography>
+                        </Box>
+                      </Box>
+                      <Box>
+                        <Typography sx={{ fontSize: 9, color: 'text.disabled', fontFamily: 'DM Mono, monospace' }}>SUBMITTED</Typography>
+                        <Typography sx={{ fontSize: 10, color: 'text.secondary', fontFamily: 'DM Mono, monospace' }}>{dateFormatter(r.requestedAt)}</Typography>
+                      </Box>
+                      {r.reviewedBy && (
+                        <Box>
+                          <Typography sx={{ fontSize: 9, color: 'text.disabled', fontFamily: 'DM Mono, monospace' }}>REVIEWED BY</Typography>
+                          <Typography sx={{ fontSize: 10, color: 'text.secondary', fontFamily: 'DM Mono, monospace' }}>{r.reviewedBy}</Typography>
+                        </Box>
+                      )}
+                    </Box>
+                    {/* Actions */}
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                      {r.status === 'pending' && (
+                        <>
+                          <Button size="small" startIcon={<CheckCircleOutlineIcon sx={{ fontSize: 12 }} />}
+                            onClick={() => handleApprove(r.email)}
+                            sx={{ fontSize: 10, color: '#10B981', bgcolor: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: 1.5, py: 0.4, px: 1, textTransform: 'none', minWidth: 0 }}>
+                            Approve
+                          </Button>
+                          <Button size="small" startIcon={<CancelOutlinedIcon sx={{ fontSize: 12 }} />}
+                            onClick={() => { setRejectTarget(r.email); setRejectReason(''); }}
+                            sx={{ fontSize: 10, color: '#EF4444', bgcolor: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 1.5, py: 0.4, px: 1, textTransform: 'none', minWidth: 0 }}>
+                            Reject
+                          </Button>
+                        </>
+                      )}
+                      {r.status === 'rejected' && (
+                        <Button size="small" startIcon={<CheckCircleOutlineIcon sx={{ fontSize: 12 }} />}
+                          onClick={() => handleApprove(r.email)}
+                          sx={{ fontSize: 10, color: '#10B981', bgcolor: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: 1.5, py: 0.4, px: 1, textTransform: 'none', minWidth: 0 }}>
+                          Approve anyway
+                        </Button>
+                      )}
+                      <Button size="small" startIcon={<DeleteOutlineIcon sx={{ fontSize: 12 }} />}
+                        onClick={() => setDeleteTarget(r.email)}
+                        sx={{ fontSize: 10, color: 'text.disabled', bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 1.5, py: 0.4, px: 1, textTransform: 'none', minWidth: 0,
+                          '&:hover': { color: '#EF4444', bgcolor: 'rgba(239,68,68,0.08)' } }}>
+                        Delete
+                      </Button>
+                    </Box>
+                  </Box>
+                );
+              })}
+            </Box>
           ) : (
+            /* ── Desktop: table ── */
             <TableContainer component={Paper} elevation={0} sx={{ bgcolor: 'transparent' }}>
               <Table size="small">
                 <TableHead>
@@ -287,7 +368,7 @@ export default function AccountRequests({ onToast }) {
                             <Typography sx={{ fontSize: 10 }}>{r.reviewedBy}</Typography>
                             {r.reviewedAt && (
                               <Typography variant="caption" sx={{ fontSize: 9, color: 'text.disabled', fontFamily: 'DM Mono, monospace' }}>
-                                {dateFormatter(r.reviewedAt)}
+                                {dateOnlyFormatter(r.reviewedAt)}
                               </Typography>
                             )}
                           </Box>

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Box, Card, CardContent, Typography, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Paper, Chip, CircularProgress,
-  ToggleButtonGroup, ToggleButton, Button,
+  ToggleButtonGroup, ToggleButton, Button, useTheme, useMediaQuery,
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import {
@@ -19,6 +19,8 @@ export default function Reports({ onToast }) {
   const [loadError, setLoadError] = useState(null);
   const [days,    setDays]        = useState(7);
   const [view,    setView]        = useState('chart');
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -126,54 +128,115 @@ export default function Reports({ onToast }) {
             </Card>
           )}
 
-          {/* Per-account table */}
+          {/* Per-account breakdown */}
           <Card>
             <CardContent>
               <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'DM Mono, monospace', letterSpacing: '0.08em', display: 'block', mb: 2 }}>
                 PER-ACCOUNT BREAKDOWN
               </Typography>
-              <TableContainer component={Paper} elevation={0} sx={{ bgcolor: 'transparent', overflowX: 'auto' }}>
-                <Table size="small" sx={{ minWidth: 600 }}>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell sx={{ color: 'text.disabled', fontSize: 10, fontFamily: 'DM Mono, monospace' }}>ACCOUNT</TableCell>
-                      {sortedDays.map(day => (
-                        <TableCell key={day} align="center" sx={{ color: 'text.disabled', fontSize: 10, fontFamily: 'DM Mono, monospace' }}>
-                          {day.slice(5)}
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {allAccounts.map(account => (
-                      <TableRow key={account} sx={{ '&:hover': { bgcolor: 'rgba(255,255,255,0.02)' } }}>
-                        <TableCell sx={{ fontFamily: 'DM Mono, monospace', fontSize: 11 }}>{account}</TableCell>
-                        {sortedDays.map(day => {
-                          const r = reports[day]?.[account];
-                          if (!r) return <TableCell key={day} align="center"><Typography variant="caption" color="text.disabled">—</Typography></TableCell>;
-                          return (
-                            <TableCell key={day} align="center">
-                              <Typography sx={{ fontSize: 12, fontWeight: 700, color: rateColor(r.successRate), fontFamily: 'DM Mono, monospace' }}>
-                                {r.successRate}%
-                              </Typography>
-                              <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: 9, display: 'block' }}>
-                                {r.emailsProcessed} emails
-                              </Typography>
-                              <Typography variant="caption" sx={{ color: '#10B981', fontSize: 9, display: 'block' }}>
-                                {r.pixelsFired || 0} beacons
-                              </Typography>
-                              {r.spamRescued > 0 && (
-                                <Chip label={`+${r.spamRescued} spam`} size="small"
-                                  sx={{ fontSize: 9, height: 16, bgcolor: 'rgba(0,229,255,0.08)', color: '#00E5FF', mt: 0.25 }} />
-                              )}
-                            </TableCell>
-                          );
-                        })}
+
+              {isMobile ? (
+                /* ── Mobile: account accordion cards ── */
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                  {allAccounts.map(account => {
+                    const accountDays = sortedDays.filter(d => reports[d]?.[account]);
+                    if (!accountDays.length) return null;
+                    const latest = reports[accountDays[0]]?.[account];
+                    const avgRate = +(accountDays.reduce((s, d) => s + (reports[d]?.[account]?.successRate || 0), 0) / accountDays.length).toFixed(1);
+                    const color = rateColor(avgRate);
+                    return (
+                      <Box key={account} sx={{
+                        borderRadius: 2,
+                        bgcolor: 'rgba(255,255,255,0.03)',
+                        border: '1px solid rgba(255,255,255,0.07)',
+                        borderLeft: `3px solid ${color}`,
+                        overflow: 'hidden',
+                      }}>
+                        {/* Account header */}
+                        <Box sx={{ p: 1.5, pb: 1 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                            <Typography sx={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: '#00E5FF',
+                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, mr: 1 }}>
+                              {account}
+                            </Typography>
+                            <Typography sx={{ fontSize: 14, fontWeight: 800, color, fontFamily: 'DM Mono, monospace', flexShrink: 0 }}>
+                              {avgRate}%
+                            </Typography>
+                          </Box>
+                          <Box sx={{ height: 3, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.06)', overflow: 'hidden', mb: 1 }}>
+                            <Box sx={{ width: `${avgRate}%`, height: '100%', bgcolor: color, borderRadius: 2 }} />
+                          </Box>
+                        </Box>
+                        {/* Day breakdown chips */}
+                        <Box sx={{ px: 1.5, pb: 1.5, display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+                          {sortedDays.map(day => {
+                            const r = reports[day]?.[account];
+                            if (!r) return (
+                              <Box key={day} sx={{ px: 1, py: 0.5, borderRadius: 1.5, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                                <Typography sx={{ fontSize: 9, color: 'text.disabled', fontFamily: 'DM Mono, monospace' }}>{day.slice(5)}</Typography>
+                                <Typography sx={{ fontSize: 10, color: 'text.disabled', fontFamily: 'DM Mono, monospace' }}>—</Typography>
+                              </Box>
+                            );
+                            const dc = rateColor(r.successRate);
+                            return (
+                              <Box key={day} sx={{ px: 1, py: 0.5, borderRadius: 1.5, bgcolor: `${dc}10`, border: `1px solid ${dc}30` }}>
+                                <Typography sx={{ fontSize: 9, color: 'text.disabled', fontFamily: 'DM Mono, monospace' }}>{day.slice(5)}</Typography>
+                                <Typography sx={{ fontSize: 11, fontWeight: 700, color: dc, fontFamily: 'DM Mono, monospace' }}>{r.successRate}%</Typography>
+                                <Typography sx={{ fontSize: 9, color: 'text.disabled', fontFamily: 'DM Mono, monospace' }}>{r.emailsProcessed}e · {r.pixelsFired || 0}b</Typography>
+                                {r.spamRescued > 0 && <Typography sx={{ fontSize: 9, color: '#00E5FF', fontFamily: 'DM Mono, monospace' }}>+{r.spamRescued} spam</Typography>}
+                              </Box>
+                            );
+                          })}
+                        </Box>
+                      </Box>
+                    );
+                  })}
+                </Box>
+              ) : (
+                /* ── Desktop: table ── */
+                <TableContainer component={Paper} elevation={0} sx={{ bgcolor: 'transparent', overflowX: 'auto' }}>
+                  <Table size="small" sx={{ minWidth: 600 }}>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell sx={{ color: 'text.disabled', fontSize: 10, fontFamily: 'DM Mono, monospace' }}>ACCOUNT</TableCell>
+                        {sortedDays.map(day => (
+                          <TableCell key={day} align="center" sx={{ color: 'text.disabled', fontSize: 10, fontFamily: 'DM Mono, monospace' }}>
+                            {day.slice(5)}
+                          </TableCell>
+                        ))}
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
+                    </TableHead>
+                    <TableBody>
+                      {allAccounts.map(account => (
+                        <TableRow key={account} sx={{ '&:hover': { bgcolor: 'rgba(255,255,255,0.02)' } }}>
+                          <TableCell sx={{ fontFamily: 'DM Mono, monospace', fontSize: 11 }}>{account}</TableCell>
+                          {sortedDays.map(day => {
+                            const r = reports[day]?.[account];
+                            if (!r) return <TableCell key={day} align="center"><Typography variant="caption" color="text.disabled">—</Typography></TableCell>;
+                            return (
+                              <TableCell key={day} align="center">
+                                <Typography sx={{ fontSize: 12, fontWeight: 700, color: rateColor(r.successRate), fontFamily: 'DM Mono, monospace' }}>
+                                  {r.successRate}%
+                                </Typography>
+                                <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: 9, display: 'block' }}>
+                                  {r.emailsProcessed} emails
+                                </Typography>
+                                <Typography variant="caption" sx={{ color: '#10B981', fontSize: 9, display: 'block' }}>
+                                  {r.pixelsFired || 0} beacons
+                                </Typography>
+                                {r.spamRescued > 0 && (
+                                  <Chip label={`+${r.spamRescued} spam`} size="small"
+                                    sx={{ fontSize: 9, height: 16, bgcolor: 'rgba(0,229,255,0.08)', color: '#00E5FF', mt: 0.25 }} />
+                                )}
+                              </TableCell>
+                            );
+                          })}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
             </CardContent>
           </Card>
         </>

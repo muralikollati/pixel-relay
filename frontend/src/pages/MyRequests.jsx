@@ -8,6 +8,7 @@
  * - Pending shows a waiting indicator
  */
 import { useState, useEffect, useCallback } from 'react';
+import { toUTC, dateFormatter, dateOnlyFormatter } from '../utils/helper';
 import {
   Box, Card, CardContent, Typography, Chip, Button, CircularProgress,
   Tooltip, IconButton, Divider,
@@ -19,7 +20,6 @@ import CancelOutlinedIcon       from '@mui/icons-material/CancelOutlined';
 import ReplayIcon               from '@mui/icons-material/Replay';
 import AddIcon                  from '@mui/icons-material/Add';
 import { getAccountRequests, reRequestAccount, connectGmail } from '../utils/api';
-import { dateFormatter } from '../utils/helper';
 
 const STATUS = {
   pending:  { color: '#F59E0B', bg: 'rgba(245,158,11,0.08)',  border: 'rgba(245,158,11,0.2)',  label: 'Pending approval', Icon: HourglassEmptyIcon },
@@ -29,8 +29,7 @@ const STATUS = {
 
 function fmt(iso) {
   if (!iso) return '—';
-  return dateFormatter(iso);
-  // return new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+  return toUTC(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
 }
 
 export default function MyRequests({ onToast }) {
@@ -78,23 +77,23 @@ export default function MyRequests({ onToast }) {
   return (
     <Box>
       {/* Header */}
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
-        <Box>
+      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 3, gap: 1.5, flexWrap: 'wrap' }}>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography sx={{ fontSize: 18, fontWeight: 700 }}>My Account Requests</Typography>
           <Typography variant="caption" color="text.secondary">
             Gmail accounts you've connected — pending admin approval
           </Typography>
         </Box>
-        <Box sx={{ display: 'flex', gap: 1 }}>
+        <Box sx={{ display: 'flex', gap: 1, flexShrink: 0 }}>
           <Tooltip title="Refresh">
             <IconButton size="small" onClick={load} sx={{ color: 'text.secondary' }}>
               <RefreshIcon sx={{ fontSize: 16 }} />
             </IconButton>
           </Tooltip>
-          <Button variant="outlined" size="small" startIcon={<AddIcon />} onClick={connectGmail}
-            sx={{ borderColor: 'rgba(0,229,255,0.3)', color: '#00E5FF', fontSize: 12,
+          <Button variant="outlined" size="small" startIcon={<AddIcon sx={{ fontSize: 14 }} />} onClick={connectGmail}
+            sx={{ borderColor: 'rgba(0,229,255,0.3)', color: '#00E5FF', fontSize: 11, py: 0.5, whiteSpace: 'nowrap',
               '&:hover': { borderColor: '#00E5FF', bgcolor: 'rgba(0,229,255,0.06)' } }}>
-            Connect another
+            Connect
           </Button>
         </Box>
       </Box>
@@ -169,11 +168,12 @@ export default function MyRequests({ onToast }) {
 
                     {/* Re-request button for rejected */}
                     {r.status === 'rejected' && (
-                      <Button size="small" variant="outlined" startIcon={busy[r.email] ? <CircularProgress size={12} /> : <ReplayIcon />}
+                      <Button size="small" startIcon={busy[r.email] ? <CircularProgress size={12} /> : <ReplayIcon sx={{ fontSize: 13 }} />}
                         disabled={!!busy[r.email]}
                         onClick={() => handleReRequest(r.email)}
-                        sx={{ color: '#F59E0B', borderColor: 'rgba(245,158,11,0.4)', fontSize: 11, flexShrink: 0,
-                          '&:hover': { borderColor: '#F59E0B', bgcolor: 'rgba(245,158,11,0.08)' },
+                        sx={{ color: '#F59E0B', bgcolor: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 1.5,
+                          fontSize: 11, flexShrink: 0, py: 0.5, px: 1.25, textTransform: 'none',
+                          '&:hover': { bgcolor: 'rgba(245,158,11,0.15)' },
                           '&.Mui-disabled': { opacity: 0.5 } }}>
                         Re-request
                       </Button>
