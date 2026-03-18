@@ -19,6 +19,7 @@ import CancelOutlinedIcon       from '@mui/icons-material/CancelOutlined';
 import ReplayIcon               from '@mui/icons-material/Replay';
 import AddIcon                  from '@mui/icons-material/Add';
 import { getAccountRequests, reRequestAccount, connectGmail } from '../utils/api';
+import { dateFormatter } from '../utils/helper';
 
 const STATUS = {
   pending:  { color: '#F59E0B', bg: 'rgba(245,158,11,0.08)',  border: 'rgba(245,158,11,0.2)',  label: 'Pending approval', Icon: HourglassEmptyIcon },
@@ -28,7 +29,8 @@ const STATUS = {
 
 function fmt(iso) {
   if (!iso) return '—';
-  return new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+  return dateFormatter(iso);
+  // return new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
 }
 
 export default function MyRequests({ onToast }) {

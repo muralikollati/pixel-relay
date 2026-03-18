@@ -25,6 +25,7 @@ import {
   getAccountRequests, approveRequest, rejectRequest,
   approveAllRequests, approveUserRequests, deleteAccountRequest,
 } from '../utils/api';
+import { dateFormatter } from '../utils/helper';
 
 const STATUS_COLOR = {
   pending:  { color: '#F59E0B', bg: 'rgba(245,158,11,0.1)',  label: 'Pending'  },
@@ -268,7 +269,7 @@ export default function AccountRequests({ onToast }) {
                         </Box>
                       </TableCell>
                       <TableCell sx={{ fontSize: 10, color: 'text.secondary', py: 1.25, fontFamily: 'DM Mono, monospace' }}>
-                        {new Date(r.requestedAt).toLocaleDateString()} {new Date(r.requestedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {dateFormatter(r.requestedAt)}
                       </TableCell>
                       <TableCell sx={{ py: 1.25 }}>
                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
@@ -286,7 +287,7 @@ export default function AccountRequests({ onToast }) {
                             <Typography sx={{ fontSize: 10 }}>{r.reviewedBy}</Typography>
                             {r.reviewedAt && (
                               <Typography variant="caption" sx={{ fontSize: 9, color: 'text.disabled', fontFamily: 'DM Mono, monospace' }}>
-                                {new Date(r.reviewedAt).toLocaleDateString()}
+                                {dateFormatter(r.reviewedAt)}
                               </Typography>
                             )}
                           </Box>

@@ -15,18 +15,19 @@ import RefreshIcon       from '@mui/icons-material/Refresh';
 import WarningAmberIcon  from '@mui/icons-material/WarningAmber';
 import CheckCircleIcon   from '@mui/icons-material/CheckCircle';
 import { getRunHistory } from '../utils/api';
+import { dateFormatter, toUTC } from '../utils/helper';
 
 const rateColor = r => r >= 95 ? '#10B981' : r >= 80 ? '#F59E0B' : '#EF4444';
 
 function fmt(iso) {
   if (!iso) return '—';
-  return new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+  return dateFormatter(iso);
 }
 
 function duration(startedAt, finishedAt) {
   if (!startedAt || !finishedAt) return '—';
-  const ms = new Date(finishedAt) - new Date(startedAt);
-  if (ms < 0) return '—';
+  const ms = toUTC(finishedAt) - toUTC(startedAt);
+  if (isNaN(ms) || ms < 0) return '—';
   if (ms < 60000) return `${Math.round(ms / 1000)}s`;
   return `${Math.round(ms / 60000)}m ${Math.round((ms % 60000) / 1000)}s`;
 }
