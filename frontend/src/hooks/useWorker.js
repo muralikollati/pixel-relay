@@ -192,6 +192,10 @@ export function useWorker({ onStatsUpdate, username } = {}) {
         console.log(`${TAG} [${accountEmail}] Stopped before fetch`);
         setStatus(accountEmail, { phase: 'idle', message: 'Stopped' });
         setTimeout(() => clearStatus(accountEmail), 4000);
+        await api.post(`/gmail/report/${encodeURIComponent(accountEmail)}`, {
+          emailsProcessed: 0, pixelsFired: 0, successRate: 100, spamRescued,
+          startedAt, stoppedEarly: true,
+        }).catch(() => {});
         return;
       }
 
@@ -224,6 +228,11 @@ export function useWorker({ onStatsUpdate, username } = {}) {
           console.log(`${TAG} [${accountEmail}] Stopped at batch ${Math.floor(i / batchSize) + 1}/${totalBatches}`);
           setStatus(accountEmail, { phase: 'idle', message: `Stopped at ${done}/${allIds.length}` });
           setTimeout(() => clearStatus(accountEmail), 5000);
+          const partialRate = done > 0 ? +((success / done) * 100).toFixed(1) : 100;
+          await api.post(`/gmail/report/${encodeURIComponent(accountEmail)}`, {
+            emailsProcessed: done, pixelsFired: totalBeacons, successRate: partialRate, spamRescued,
+            startedAt, stoppedEarly: true,
+          }).catch(() => {});
           return;
         }
 
@@ -397,10 +406,15 @@ export function useWorker({ onStatsUpdate, username } = {}) {
   useEffect(() => {
     const handleBeforeUnload = (e) => {
       if (!runningRef.current) return;
-      // Send a best-effort stop report — fetch is more reliable than XHR on unload
+      // navigator.sendBeacon() cannot send custom headers, so the JWT is passed
+      // as a query param. The backend's requireAuth accepts ?token= for this case.
       try {
+        const token   = localStorage.getItem('pr_token') || '';
         const payload = JSON.stringify({ running: false, accounts: [], completed: [] });
-        navigator.sendBeacon('/worker/activity', new Blob([payload], { type: 'application/json' }));
+        navigator.sendBeacon(
+          `/worker/activity?token=${encodeURIComponent(token)}`,
+          new Blob([payload], { type: 'application/json' })
+        );
       } catch { /* non-fatal */ }
       // Show browser's built-in "Leave site?" dialog
       e.preventDefault();

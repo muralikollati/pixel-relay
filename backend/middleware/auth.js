@@ -81,14 +81,17 @@ function generateToken(user) {
 }
 
 // requireAuth — verifies JWT, checks denylist, attaches live permissions to req.user
+// Also accepts ?token= query param for navigator.sendBeacon() calls, which cannot
+// send custom headers. Only used by the beforeunload activity-clear beacon.
 async function requireAuth(req, res, next) {
   ensureDb();
   const header = req.headers.authorization;
-  if (!header || !header.startsWith('Bearer ')) {
+  const queryToken = req.query?.token;
+  if (!header?.startsWith('Bearer ') && !queryToken) {
     return res.status(401).json({ error: 'Not authenticated' });
   }
   try {
-    const token   = header.split(' ')[1];
+    const token   = queryToken || header.split(' ')[1];
     const decoded = jwt.verify(token, SECRET);
 
     if (isRevoked(decoded)) {
