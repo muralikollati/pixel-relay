@@ -1048,7 +1048,7 @@ export default function Dashboard({
                       }}>
                         {/* Top row: email + status */}
                         <Box sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", mb: 0.75, gap: 1 }}>
-                          <Typography sx={{ fontSize: 11, fontFamily: "DM Mono, monospace", color: "#00E5FF",
+                          <Typography sx={{ fontSize: 11, fontFamily: "DM Mono, monospace", color: "",
                             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
                             {a.email}
                           </Typography>
@@ -1068,17 +1068,17 @@ export default function Dashboard({
                         {/* Stats pills row */}
                         <Box sx={{ display: "flex", gap: 0.75, mb: 1, flexWrap: "wrap" }}>
                           <Box sx={{ px: 0.75, py: 0.25, borderRadius: 1, bgcolor: "rgba(0,229,255,0.08)", border: "1px solid rgba(0,229,255,0.15)" }}>
-                            <Typography sx={{ fontSize: 11, fontWeight: 700, color: "#00E5FF", fontFamily: "DM Mono, monospace", lineHeight: 1.2 }}>
+                            <Typography sx={{ fontSize: 11, fontWeight: 700, color: "#27a2b0", fontFamily: "DM Mono, monospace", lineHeight: 1.2 }}>
                               {(a.stats?.emailsProcessed || 0).toLocaleString()}
                             </Typography>
                             <Typography sx={{ fontSize: 9, color: "rgba(255,255,255,0.3)", fontFamily: "DM Mono, monospace", lineHeight: 1.2 }}>emails</Typography>
                           </Box>
-                          <Box sx={{ px: 0.75, py: 0.25, borderRadius: 1, bgcolor: "rgba(124,58,237,0.08)", border: "1px solid rgba(124,58,237,0.15)" }}>
+                          {/* <Box sx={{ px: 0.75, py: 0.25, borderRadius: 1, bgcolor: "rgba(124,58,237,0.08)", border: "1px solid rgba(124,58,237,0.15)" }}>
                             <Typography sx={{ fontSize: 11, fontWeight: 700, color: "#7C3AED", fontFamily: "DM Mono, monospace", lineHeight: 1.2 }}>
                               {(a.stats?.pixelsFired || 0).toLocaleString()}
                             </Typography>
                             <Typography sx={{ fontSize: 9, color: "rgba(255,255,255,0.3)", fontFamily: "DM Mono, monospace", lineHeight: 1.2 }}>beacons</Typography>
-                          </Box>
+                          </Box> */}
                           <Box sx={{ px: 0.75, py: 0.25, borderRadius: 1, bgcolor: `${rateColor(rate)}10`, border: `1px solid ${rateColor(rate)}30` }}>
                             <Typography sx={{ fontSize: 11, fontWeight: 700, color: rateColor(rate), fontFamily: "DM Mono, monospace", lineHeight: 1.2 }}>
                               {rate}%
@@ -1128,8 +1128,8 @@ export default function Dashboard({
                             )
                           ) : (
                             <Button size="small" startIcon={<PlayArrowIcon sx={{ fontSize: 12 }} />} onClick={() => handleRunOne(a)} disabled={!canRun}
-                              sx={{ flex: 1, fontSize: 10, color: "#00E5FF", bgcolor: "rgba(0,229,255,0.08)", border: "1px solid rgba(0,229,255,0.25)", borderRadius: 1.5, py: 0.5, textTransform: "none",
-                                "&:hover": { bgcolor: "rgba(0,229,255,0.15)" }, "&.Mui-disabled": { opacity: 0.3 } }}>Run</Button>
+                              sx={{ flex: 1, fontSize: 10, color: "#18cb6e", bgcolor: "rgba(46, 199, 48, 0.08)", border: "1px solid rgba(19, 155, 76, 0.25)", borderRadius: 1.5, py: 0.5, textTransform: "none",
+                                "&:hover": { bgcolor: "rgba(55, 160, 56, 0.08)" }, "&.Mui-disabled": { opacity: 0.3 } }}>Run</Button>
                           )}
 
                           <Button size="small"
