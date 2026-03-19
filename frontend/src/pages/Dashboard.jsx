@@ -28,6 +28,7 @@ import ReplayIcon from "@mui/icons-material/Replay";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import SearchIcon from "@mui/icons-material/Search";
 import PeopleAltIcon from "@mui/icons-material/PeopleAlt";
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import {
   AreaChart,
   Area,
@@ -38,13 +39,14 @@ import {
 } from "recharts";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { Spark } from "../components/ui";
+import { useWakeLock } from "../hooks/useWakeLock";
 import {
   pauseAccount,
   resumeAccount,
   removeAccount,
   requestStop,
 } from "../utils/api";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 
 const rateColor = (r) =>
   r >= 95 ? "#10B981" : r >= 85 ? "#F59E0B" : "#EF4444";
@@ -202,6 +204,22 @@ export default function Dashboard({
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
 
+  // Own-session running flag — only warn/lock for runs THIS browser started
+  const { running, runAllMode, accountStatuses, startRun, stopOne } = worker;
+  const ownRunning = running;
+  const { supported: wakeLockSupported, active: wakeLockActive } = useWakeLock(ownRunning);
+
+  // Show mobile warning banner when own run is active on a touch device
+  const [warnDismissed, setWarnDismissed] = useState(false);
+  // Reset dismiss whenever a new run starts
+  const prevRunning = useRef(false);
+  useEffect(() => {
+    if (ownRunning && !prevRunning.current) setWarnDismissed(false);
+    prevRunning.current = ownRunning;
+  }, [ownRunning]);
+
+  const showMobileWarning = ownRunning && isMobile && !warnDismissed;
+
   if (!data)
     return (
       <Box
@@ -215,7 +233,6 @@ export default function Dashboard({
       </Box>
     );
 
-  const { running, runAllMode, accountStatuses, startRun, stopOne } = worker;
   const { summary, accounts = [] } = data;
   const isAdmin = ["superadmin", "admin"].includes(userRole);
 
@@ -331,6 +348,42 @@ export default function Dashboard({
 
   return (
     <Box>
+      {/* ── Mobile keep-screen-on warning ─────────────────────────────── */}
+      {showMobileWarning && (
+        <Box sx={{
+          mb: 2, px: 2, py: 1.5, borderRadius: 2,
+          bgcolor: 'rgba(245,158,11,0.07)',
+          border: '1px solid rgba(245,158,11,0.35)',
+          display: 'flex', alignItems: 'flex-start', gap: 1.5,
+        }}>
+          <WarningAmberIcon sx={{ color: '#F59E0B', fontSize: 18, flexShrink: 0, mt: 0.2 }} />
+          <Box sx={{ flex: 1 }}>
+            <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#F59E0B', mb: 0.4 }}>
+              Keep this screen open
+            </Typography>
+            <Typography sx={{ fontSize: 11, color: 'rgba(245,158,11,0.8)', lineHeight: 1.5 }}>
+              Processing runs in this browser tab. Minimizing the app or locking
+              your screen will pause or stop the run.
+              {wakeLockSupported
+                ? wakeLockActive
+                  ? ' Screen lock is temporarily disabled while running.'
+                  : ' Could not disable screen lock — keep your screen on manually.'
+                : ' Your browser does not support automatic screen lock prevention.'}
+            </Typography>
+          </Box>
+          <Box component="button"
+            onClick={() => setWarnDismissed(true)}
+            sx={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: 'rgba(245,158,11,0.6)', fontSize: 18, lineHeight: 1,
+              flexShrink: 0, p: 0, mt: 0.1,
+              '&:hover': { color: '#F59E0B' },
+            }}>
+            ×
+          </Box>
+        </Box>
+      )}
+
       {/* Live running banner — visible to all users when any of their accounts are running */}
       {runningAccounts.length > 0 && (
         <Box

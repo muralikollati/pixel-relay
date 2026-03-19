@@ -14,7 +14,9 @@ import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import InboxIcon         from '@mui/icons-material/Inbox';
 import HistoryIcon       from '@mui/icons-material/History';
 import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
+import GetAppIcon from '@mui/icons-material/GetApp';
 import { healthCheck, connectGmail } from '../utils/api';
+import { useInstallPrompt } from '../hooks/useInstallPrompt';
 
 // Tabs visible per role
 const TABS_BY_ROLE = {
@@ -45,6 +47,7 @@ export default function Topbar({ tab, setTab, onToast, user, onLogout, worker, d
   const [pulse,      setPulse]    = useState(false);
   const [drawerOpen, setDrawer]   = useState(false);
   const [anchorEl,   setAnchorEl] = useState(null);
+  const { canInstall, install, installed } = useInstallPrompt();
 
   const tabs       = TABS_BY_ROLE[user?.role] || ['dashboard'];
   const anyRunning = worker?.running    || false;
@@ -124,7 +127,7 @@ export default function Topbar({ tab, setTab, onToast, user, onLogout, worker, d
       sx={{ bgcolor: 'rgba(8,10,15,0.97)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
       <Toolbar sx={{ gap: 2, minHeight: { xs: 56, sm: 64 } }}>
         {/* Logo */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mr: 2, flexShrink: 0 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mr: 2, flexShrink: 0 }} onClick={() => {setTab('dashboard');  setAnchorEl(null);}} style={{ cursor: 'pointer' }}>
           <Box sx={{ width: 32, height: 32, borderRadius: 2, background: 'linear-gradient(135deg, #00E5FF 0%, #7C3AED 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 16px rgba(0,229,255,0.2)' }}>
             <BoltIcon sx={{ fontSize: 18, color: '#000' }} />
           </Box>
@@ -223,6 +226,12 @@ export default function Topbar({ tab, setTab, onToast, user, onLogout, worker, d
             </MenuItem>,
           ]}
 
+          {canInstall && (
+            <MenuItem onClick={async () => { await install(); setAnchorEl(null); }} sx={{ fontSize: 13, gap: 1, color: '#00E5FF' }}>
+              <GetAppIcon sx={{ fontSize: 16 }} /> Add to Home Screen
+            </MenuItem>
+          )}
+
           <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
           <MenuItem onClick={() => { onLogout(); setAnchorEl(null); }} sx={{ fontSize: 13, gap: 1, color: '#EF4444' }}>
             <LogoutIcon sx={{ fontSize: 16 }} /> Sign Out
@@ -245,6 +254,16 @@ export default function Topbar({ tab, setTab, onToast, user, onLogout, worker, d
               <Button fullWidth variant="outlined" color="primary" startIcon={<AddIcon />}
                 onClick={() => { connectGmail(); setDrawer(false); }}>
                 Connect Gmail
+              </Button>
+            </Box>
+          )}
+          {canInstall && (
+            <Box sx={{ px: 2, pt: 1.5 }}>
+              <Button fullWidth variant="outlined" startIcon={<GetAppIcon />}
+                onClick={async () => { await install(); setDrawer(false); }}
+                sx={{ borderColor: 'rgba(0,229,255,0.3)', color: '#00E5FF',
+                  '&:hover': { borderColor: '#00E5FF', bgcolor: 'rgba(0,229,255,0.06)' } }}>
+                Add to Home Screen
               </Button>
             </Box>
           )}
