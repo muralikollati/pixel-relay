@@ -40,7 +40,7 @@ const TAB_LABELS = {
 const roleColor = r => r === 'superadmin' ? '#EF4444' : r === 'admin' ? '#F59E0B' : '#10B981';
 const roleLabel = r => r === 'superadmin' ? 'Super Admin' : r === 'admin' ? 'Admin' : 'User';
 
-export default function Topbar({ tab, setTab, onToast, user, onLogout, worker, data, pendingCount = 0 }) {
+export default function Topbar({ tab, setTab, onToast, user, onLogout, worker, data, pendingCount = 0, ownerFilter = '', setOwnerFilter }) {
   const theme    = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [online,     setOnline]   = useState(false);
@@ -61,18 +61,21 @@ export default function Topbar({ tab, setTab, onToast, user, onLogout, worker, d
 
   const handleRunAll = () => {
     const liveStatuses = worker?.accountStatuses || {};
+    const isAdmin = ['admin', 'superadmin'].includes(user?.role);
     const accounts = (data?.accounts || []).filter(a => {
       if (!['active', 'warning'].includes(a.status)) return false;
       const live = liveStatuses[a.email];
       if (live?.phase && !['done', 'idle', 'error'].includes(live.phase)) return false;
+      // If admin has an owner filter active, only run that owner's accounts
+      if (isAdmin && ownerFilter && a.owner !== ownerFilter) return false;
       return true;
     });
     if (accounts.length === 0) {
-      onToast('No idle accounts to run', 'warning');
+      onToast(ownerFilter ? `No idle accounts for owner "${ownerFilter}"` : 'No idle accounts to run', 'warning');
       return;
     }
     worker.startRun(accounts, 'all');
-    onToast(`Starting ${accounts.length} account(s)`, 'success');
+    onToast(`Starting ${accounts.length} account(s)${ownerFilter ? ` for ${ownerFilter}` : ''}`, 'success');
   };
 
   const handleStopAll = () => {

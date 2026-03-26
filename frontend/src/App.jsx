@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ThemeProvider, createTheme, CssBaseline, Box, Snackbar, Alert } from '@mui/material';
+import { ThemeProvider, createTheme, CssBaseline, Box, Snackbar, Alert, CircularProgress } from '@mui/material';
 import Topbar          from './components/Topbar';
 import Dashboard       from './pages/Dashboard';
 import Accounts        from './pages/Accounts';
@@ -46,6 +46,11 @@ const isAdminRole = (role) => ['superadmin', 'admin'].includes(role);
 
 export default function App() {
   const [user,         setUser]         = useState(loadStoredUser);
+  // authChecking: true on page load when there is a stored user that must be
+  // verified against the server before rendering any role-dependent UI.
+  // This prevents the wrong-role flash after a Google OAuth redirect — the page
+  // hard-reloads and localStorage may hold stale admin data from a previous session.
+  const [authChecking, setAuthChecking] = useState(() => !!loadStoredUser());
   const [tab,          setTab]          = useState('dashboard');
   const [toast,        setToast]        = useState(null);
   const [toastOpen,    setToastOpen]    = useState(false);
@@ -54,6 +59,8 @@ export default function App() {
   // myActivity:  for all users — scoped live statuses for accounts they can see
   const [allActivity,  setAllActivity]  = useState({});
   const [myActivity,   setMyActivity]   = useState({ running: false, accounts: [] });
+  // Admin owner filter — when set, Dashboard and Run All scope to only this owner's accounts
+  const [ownerFilter,  setOwnerFilter]  = useState('');
   // FIX #12: pendingCount derived from stats (polled every 4s) — no separate interval
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -69,23 +76,41 @@ export default function App() {
   useEffect(() => { userRef.current = user; }, [user]);
 
   useEffect(() => {
-    if (!user?.username) return;
+    if (!user?.username) {
+      setAuthChecking(false);
+      return;
+    }
+    let firstCallDone = false;
     const refresh = async () => {
       const currentUser = userRef.current;
       if (!currentUser) return;
       try {
         const res     = await getMe();
         const updated = res.data.user;
-        if (JSON.stringify(currentUser.permissions) !== JSON.stringify(updated.permissions)) {
-          const merged = { ...currentUser, permissions: updated.permissions };
+        // FIX: sync both role AND permissions — previously only permissions were
+        // compared, so a stale role in localStorage (e.g. from a previous admin
+        // session) would never be corrected until the user explicitly re-logged in.
+        const roleChanged = currentUser.role !== updated.role;
+        const permChanged = JSON.stringify(currentUser.permissions) !== JSON.stringify(updated.permissions);
+        if (roleChanged || permChanged) {
+          const merged = { ...currentUser, role: updated.role, permissions: updated.permissions };
           setUser(merged);
           localStorage.setItem('pr_user', JSON.stringify(merged));
         }
-      } catch { /* non-fatal */ }
+      } catch { /* non-fatal */ } finally {
+        // Mark auth check complete after the very first call (success or failure).
+        // On failure we fall back to whatever is in localStorage — acceptable for
+        // transient network errors; a true 401 is caught by the axios interceptor
+        // which already clears localStorage and redirects to /.
+        if (!firstCallDone) {
+          firstCallDone = true;
+          setAuthChecking(false);
+        }
+      }
     };
     refresh();
     const id = setInterval(refresh, 30_000);
-    return () => clearInterval(id);
+    return () => { clearInterval(id); firstCallDone = true; };
   }, [user?.username]); // only restart when username changes — not on every user object mutation
 
   // ── Clear stale activity on startup ────────────────────────────────────────
@@ -177,7 +202,7 @@ export default function App() {
     setToastOpen(true);
   }
 
-  const handleLogin  = (userData) => { setUser(userData); setTab('dashboard'); };
+  const handleLogin  = (userData) => { setAuthChecking(false); setUser(userData); setTab('dashboard'); };
   const handleLogout = async () => {
     // FIX: Revoke the token server-side before clearing local state.
     // The server adds it to a denylist so it can't be reused even if intercepted.
@@ -185,8 +210,24 @@ export default function App() {
     localStorage.removeItem('pr_token');
     localStorage.removeItem('pr_user');
     setUser(null);
+    setAuthChecking(false);
   };
   const handleToastClose = (_, reason) => { if (reason === 'clickaway') return; setToastOpen(false); };
+
+  // ── Auth gate ───────────────────────────────────────────────────────────────
+  // Show a brief spinner while verifying the stored session against the server.
+  // This prevents rendering role-dependent UI (accounts, run-history, admin panel)
+  // with a stale role from localStorage — which is the root cause of:
+  //   • Admin-added accounts being visible to user role on first load
+  //   • Google OAuth redirect landing on admin dashboard when logged in as user
+  if (authChecking) return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <CircularProgress size={32} sx={{ color: '#00E5FF' }} />
+      </Box>
+    </ThemeProvider>
+  );
 
   if (!user) return <ThemeProvider theme={theme}><CssBaseline /><Login onLogin={handleLogin} /></ThemeProvider>;
 
@@ -203,6 +244,7 @@ export default function App() {
           worker={worker} data={data}
           user={user} onLogout={handleLogout}
           pendingCount={pendingCount}
+          ownerFilter={ownerFilter} setOwnerFilter={setOwnerFilter}
         />
         <Box component="main" sx={{ flex: 1, maxWidth: 1400, width: '100%', mx: 'auto', px: { xs: 2, sm: 3, md: 4 }, py: { xs: 2, sm: 3 }, boxSizing: 'border-box' }}>
           {tab === 'dashboard' && (
@@ -212,6 +254,7 @@ export default function App() {
               allActivity={allActivity}   /* admin: full map */
               myActivity={myActivity}     /* all users: scoped to their accounts */
               userRole={user.role}
+              ownerFilter={ownerFilter} setOwnerFilter={setOwnerFilter}
             />
           )}
           {tab === 'accounts'         && <Accounts         data={data} refetch={refetch} onToast={showToast} worker={worker} user={user} myActivity={myActivity} />}

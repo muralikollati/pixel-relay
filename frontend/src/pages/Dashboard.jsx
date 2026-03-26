@@ -18,6 +18,10 @@ import {
   InputAdornment,
   Paper,
   Button,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
   useMediaQuery,
   useTheme,
 } from "@mui/material";
@@ -196,6 +200,8 @@ export default function Dashboard({
   allActivity = {},
   myActivity = {},
   userRole = "user",
+  ownerFilter = "",
+  setOwnerFilter,
 }) {
   const [search, setSearch] = useState("");
   const [confirmEmail, setConfirmEmail] = useState(null);
@@ -342,7 +348,17 @@ export default function Dashboard({
     }
   };
 
-  const filtered = enriched.filter((a) =>
+  // All unique owners — used to populate the admin owner filter dropdown
+  const ownerList = isAdmin
+    ? [...new Set(accounts.map(a => a.owner).filter(Boolean))].sort()
+    : [];
+
+  // Apply owner filter first (admin only), then text search
+  const ownerFiltered = isAdmin && ownerFilter
+    ? enriched.filter(a => a.owner === ownerFilter)
+    : enriched;
+
+  const filtered = ownerFiltered.filter((a) =>
     a.email.toLowerCase().includes(search.toLowerCase()),
   );
 
@@ -583,31 +599,57 @@ export default function Dashboard({
                 fontSize: 11,
               }}>
               CONNECTED ACCOUNTS
-              {isAdmin && (
+              {isAdmin && ownerFilter && (
+                <Box component="span" sx={{ ml: 1, color: "#67E8F9" }}>
+                  — {ownerFilter}
+                </Box>
+              )}
+              {isAdmin && !ownerFilter && (
                 <Box component="span" sx={{ ml: 1, color: "#67E8F9" }}>
                   — all users visible
                 </Box>
               )}
             </Typography>
-            <TextField
-              size="small"
-              placeholder="Filter accounts..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon sx={{ fontSize: 16, color: "text.disabled" }} />
-                  </InputAdornment>
-                ),
-                sx: {
-                  fontSize: 12,
-                  fontFamily: "DM Mono, monospace",
-                  bgcolor: "rgba(255,255,255,0.03)",
-                },
-              }}
-              sx={{ width: { xs: "100%", sm: 220 } }}
-            />
+            <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "center" }}>
+              {/* Owner filter — admin only */}
+              {isAdmin && ownerList.length > 0 && (
+                <FormControl size="small" sx={{ minWidth: 160, width: { xs: '100%', sm: 'auto' } }}>
+                  <InputLabel sx={{ fontSize: 12 }}>Filter by owner</InputLabel>
+                  <Select
+                    value={ownerFilter}
+                    label="Filter by owner"
+                    onChange={e => setOwnerFilter(e.target.value)}
+                    sx={{ fontSize: 12, fontFamily: "DM Mono, monospace" }}
+                  >
+                    <MenuItem value=""><em>All owners</em></MenuItem>
+                    {ownerList.map(owner => (
+                      <MenuItem key={owner} value={owner} sx={{ fontSize: 12, fontFamily: "DM Mono, monospace" }}>
+                        {owner}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              )}
+              <TextField
+                size="small"
+                placeholder="Filter accounts..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon sx={{ fontSize: 16, color: "text.disabled" }} />
+                    </InputAdornment>
+                  ),
+                  sx: {
+                    fontSize: 12,
+                    fontFamily: "DM Mono, monospace",
+                    bgcolor: "rgba(255,255,255,0.03)",
+                  },
+                }}
+                sx={{ width: { xs: "100%", sm: 200 } }}
+              />
+            </Box>
           </Box>
 
           {filtered.length === 0 ? (
