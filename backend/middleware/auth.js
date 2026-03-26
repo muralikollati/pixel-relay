@@ -103,9 +103,15 @@ async function requireAuth(req, res, next) {
       return res.status(401).json({ error: 'Account no longer exists', deleted: true });
     }
 
+    // FIX: Always use the current role from the database, not the role embedded in
+    // the JWT. If an admin changed this user's role after the JWT was issued, the
+    // JWT's role field is stale. Using decoded.role would let the old role persist
+    // for up to 7 days (token lifetime) — causing users to see accounts/history
+    // belonging to other users, or ex-admins to retain admin access.
     req.user = {
       ...decoded,
-      permissions: UserStore.getPermissions(decoded.role),
+      role:        user.role,
+      permissions: UserStore.getPermissions(user.role),
     };
 
     next();

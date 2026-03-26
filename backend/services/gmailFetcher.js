@@ -85,7 +85,7 @@ async function collectAllIds(email) {
 
   const gmail = await getGmailClient(tokenData, (newTokens) => {
     TokenStore.updateToken(email, newTokens);
-  });
+  }, email);
 
   const allIds    = [];
   let pageToken   = null;
@@ -160,7 +160,7 @@ async function markAsRead(email, messageId) {
     const tokenData = TokenStore.getWithTokens(email);
     if (!tokenData) return;
 
-    const gmail = await getGmailClient(tokenData, (t) => TokenStore.updateToken(email, t));
+    const gmail = await getGmailClient(tokenData, (t) => TokenStore.updateToken(email, t), email);
 
     await consumeQuota(email, UNITS.MODIFY);
     await gmail.users.messages.modify({
@@ -182,7 +182,7 @@ async function getAuthenticatedClient(email) {
   if (!tokenData) throw new Error(`No token found for ${email}`);
   return getGmailClient(tokenData, (newTokens) => {
     TokenStore.updateToken(email, newTokens);
-  });
+  }, email);
 }
 
 module.exports = { collectAllIds, fetchEmailContent, getAuthenticatedClient, markAsRead, withRetry };
