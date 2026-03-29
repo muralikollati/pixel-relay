@@ -543,6 +543,18 @@ export default function AdminPanel({ onToast, user }) {
                           <Typography sx={{ fontSize: 9, color: 'text.disabled', fontFamily: 'DM Mono, monospace', mb: 0.25 }}>LAST LOGIN</Typography>
                           <Typography sx={{ fontSize: 10, color: 'text.secondary', fontFamily: 'DM Mono, monospace' }}>{u.lastLogin ? dateFormatter(u.lastLogin) : '—'}</Typography>
                         </Box>
+                        <Box>
+                          <Typography sx={{ fontSize: 9, color: 'text.disabled', fontFamily: 'DM Mono, monospace', mb: 0.25 }}>PROFILES</Typography>
+                          <Typography sx={{ fontSize: 10, color: '#00E5FF', fontFamily: 'DM Mono, monospace' }}>
+                            {(u.profileCount ?? '—')}
+                          </Typography>
+                        </Box>
+                        <Box>
+                          <Typography sx={{ fontSize: 9, color: 'text.disabled', fontFamily: 'DM Mono, monospace', mb: 0.25 }}>ACCOUNTS</Typography>
+                          <Typography sx={{ fontSize: 10, color: 'text.secondary', fontFamily: 'DM Mono, monospace' }}>
+                            {(u.accountCount ?? '—')}
+                          </Typography>
+                        </Box>
                       </Box>
                       {/* Actions */}
                       <Box sx={{ display: 'flex', gap: 1 }}>
@@ -566,7 +578,7 @@ export default function AdminPanel({ onToast, user }) {
                   <Table size="small">
                     <TableHead>
                       <TableRow>
-                        {['Username', 'Role', 'Last Login', 'Created', 'Actions'].map((col, i) => (
+                        {['Username', 'Role', 'Profiles', 'Accounts', 'Last Login', 'Created', 'Actions'].map((col, i) => (
                           <TableCell key={col || i} sx={{ color: 'text.disabled', fontSize: 10, fontFamily: 'DM Mono, monospace', letterSpacing: '0.08em' }}>{col}</TableCell>
                         ))}
                       </TableRow>
@@ -599,6 +611,12 @@ export default function AdminPanel({ onToast, user }) {
                                 ))}
                               </Select>
                             </FormControl>
+                          </TableCell>
+                          <TableCell sx={{ fontSize: 11, color: '#00E5FF', fontFamily: 'DM Mono, monospace' }}>
+                            {u.profileCount ?? '—'}
+                          </TableCell>
+                          <TableCell sx={{ fontSize: 11, color: 'text.secondary', fontFamily: 'DM Mono, monospace' }}>
+                            {u.accountCount ?? '—'}
                           </TableCell>
                           <TableCell sx={{ fontSize: 11, color: 'text.secondary' }}>
                             {u.lastLogin ? dateFormatter(u.lastLogin) : '—'}

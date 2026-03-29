@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/',
+  baseURL: '/',
   withCredentials: true,
 });
 
@@ -31,6 +31,18 @@ export const getMe = ()                   => api.get('/users/me');
 // FIX: Logout now calls the server to revoke the token before clearing local state.
 // Previously this was purely client-side, meaning stolen tokens remained valid for 7 days.
 export const logoutApi = () => api.post('/users/logout').catch(() => {});
+
+// ── Self-service password change ───────────────────────────────────────────────
+export const changeMyPassword = (currentPassword, newPassword) =>
+  api.patch('/users/me/password', { currentPassword, newPassword });
+
+// ── Profiles ───────────────────────────────────────────────────────────────────
+export const getProfiles      = ()           => api.get('/users/profiles');
+export const createProfile    = (name)       => api.post('/users/profiles', { name });
+export const renameProfile    = (id, name)   => api.patch(`/users/profiles/${id}`, { name });
+export const deleteProfile    = (id)         => api.delete(`/users/profiles/${id}`);
+export const activateProfile  = (id)         => api.post(`/users/profiles/${id}/activate`);
+export const setDefaultProfile = (id)        => api.post(`/users/profiles/${id}/default`);
 
 // ── Users (superadmin) ─────────────────────────────────────────────────────────
 export const getUsers          = ()                   => api.get('/users');

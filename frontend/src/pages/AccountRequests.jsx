@@ -334,7 +334,7 @@ export default function AccountRequests({ onToast }) {
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    {['Gmail account', 'Requested by', 'Submitted', 'Status', 'Reviewed by', 'Actions'].map(h => (
+                    {['Gmail account', 'Requested by', 'Profile', 'Submitted', 'Status', 'Reviewed by', 'Actions'].map(h => (
                       <TableCell key={h} sx={{ color: 'text.disabled', fontSize: 10, fontFamily: 'DM Mono, monospace', py: 1 }}>{h}</TableCell>
                     ))}
                   </TableRow>
@@ -348,6 +348,17 @@ export default function AccountRequests({ onToast }) {
                           <PersonIcon sx={{ fontSize: 12, color: 'text.disabled' }} />
                           {r.owner}
                         </Box>
+                      </TableCell>
+                      <TableCell sx={{ fontSize: 10, py: 1.25 }}>
+                        {r.profileName ? (
+                          <Chip label={r.profileName} size="small"
+                            sx={{ height: 18, fontSize: 9, fontFamily: 'DM Mono, monospace',
+                              bgcolor: 'rgba(0,229,255,0.08)', color: '#00E5FF',
+                              border: '1px solid rgba(0,229,255,0.2)',
+                              '& .MuiChip-label': { px: 1 } }} />
+                        ) : (
+                          <Typography sx={{ fontSize: 10, color: 'text.disabled' }}>—</Typography>
+                        )}
                       </TableCell>
                       <TableCell sx={{ fontSize: 10, color: 'text.secondary', py: 1.25, fontFamily: 'DM Mono, monospace' }}>
                         {dateFormatter(r.requestedAt)}

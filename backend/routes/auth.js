@@ -13,30 +13,34 @@ const router     = express.Router();
 const { getAuthUrl, exchangeCode } = require('../services/googleAuth');
 const TokenStore = require('../services/tokenStore');
 const AccountRequestStore = require('../services/accountRequestStore');
+const ProfileStore = require('../services/profileStore');
 const logger     = require('../services/logger');
 const { requireAuth, requirePermission } = require('../middleware/auth');
 const UserStore   = require('../services/userStore');
 const crypto     = require('crypto');
 
-// Simple signing so the state can't be forged (username:sig)
+// Simple signing so the state can't be forged (username:profileId:sig)
 const STATE_SECRET = process.env.JWT_SECRET || 'pixelrelay-secret-change-in-production';
 
-function signState(username) {
-  const sig = crypto.createHmac('sha256', STATE_SECRET).update(username).digest('hex').slice(0, 16);
-  return Buffer.from(`${username}:${sig}`).toString('base64url');
+function signState(username, profileId) {
+  const payload = `${username}:${profileId || ''}`;
+  const sig = crypto.createHmac('sha256', STATE_SECRET).update(payload).digest('hex').slice(0, 16);
+  return Buffer.from(`${payload}:${sig}`).toString('base64url');
 }
 
 function verifyState(state) {
   try {
     if (!state) return null;
     const decoded = Buffer.from(state, 'base64url').toString('utf8');
-    const colon   = decoded.lastIndexOf(':');
-    if (colon < 0) return null;
-    const username = decoded.slice(0, colon);
-    const sig      = decoded.slice(colon + 1);
-    const expected = crypto.createHmac('sha256', STATE_SECRET).update(username).digest('hex').slice(0, 16);
+    const parts   = decoded.split(':');
+    if (parts.length < 2) return null;
+    const sig      = parts[parts.length - 1];
+    const profileId = parts.length >= 3 ? parts[parts.length - 2] : '';
+    const username  = parts.slice(0, parts.length - 2).join(':'); // handle colons in username
+    const payload  = `${username}:${profileId}`;
+    const expected = crypto.createHmac('sha256', STATE_SECRET).update(payload).digest('hex').slice(0, 16);
     if (sig !== expected) return null;
-    return username;
+    return { username, profileId: profileId ? parseInt(profileId) : null };
   } catch {
     return null;
   }
@@ -46,8 +50,9 @@ function verifyState(state) {
 // requirePermission handles admin/superadmin bypass + live permission check for users
 router.post('/google/init', ...requirePermission('canConnectAccounts'), (req, res) => {
   try {
-    // Encode username in the state param — survives the Google redirect regardless of browser/cookie
-    const state = signState(req.user.username);
+    // Encode username + active profile in the state param
+    const profileId = req.user.activeProfileId || null;
+    const state = signState(req.user.username, profileId);
     const url   = getAuthUrl(state);
     res.json({ success: true, url });
   } catch (err) {
@@ -73,14 +78,16 @@ router.get('/google/callback', async (req, res) => {
     const tokenData = await exchangeCode(code);
     if (!tokenData.email) throw new Error('Could not retrieve email from Google');
 
-    // Recover the owner from the signed state param — fallback to 'admin' if missing/invalid
-    const owner = verifyState(state) || 'admin';
-    logger.info(`OAuth callback: email=${tokenData.email}, owner=${owner}`);
+    // Recover the owner and profileId from the signed state param
+    const stateData = verifyState(state);
+    const owner     = stateData?.username || 'admin';
+    const profileId = stateData?.profileId || null;
+    logger.info(`OAuth callback: email=${tokenData.email}, owner=${owner}, profileId=${profileId}`);
 
     // If this Gmail is already an active approved account, just refresh its token
     const existing = TokenStore.get(tokenData.email);
     if (existing) {
-      TokenStore.save(tokenData.email, tokenData, existing.owner || owner);
+      TokenStore.save(tokenData.email, tokenData, existing.owner || owner, existing.profileId || profileId);
       logger.info(`Token refreshed: ${tokenData.email}`);
       return res.redirect(`${FRONTEND}/?connected=${encodeURIComponent(tokenData.email)}`);
     }
@@ -89,29 +96,42 @@ router.get('/google/callback', async (req, res) => {
     const ownerUser = UserStore.getUser(owner);
     const ownerRole = ownerUser?.role || 'user';
 
-    // FIX #9: Enforce per-user account cap to prevent API quota abuse.
-    // Cap applies to all roles. Admins/superadmins see all accounts so their
-    // count is higher — we scope the check to their own owned accounts only.
-    const maxAccountsPerUser = require('../services/configStore').get().maxAccountsPerUser || 10;
-    const existingCount = TokenStore.getAll().filter(a => a.owner === owner).length;
-    if (existingCount >= maxAccountsPerUser) {
-      logger.warn(`Account cap reached for ${owner}: ${existingCount}/${maxAccountsPerUser}`);
+    // Resolve which profile to add the account to
+    const resolvedProfileId = profileId || (() => {
+      try { return ProfileStore.ensureDefault(owner)?.id || null; } catch { return null; }
+    })();
+
+    // Cap check: approved accounts + pending requests for this profile combined.
+    // This prevents users from bypassing the cap by flooding the request queue
+    // before any are approved.
+    const maxAccountsPerUser = require('../services/configStore').get().maxAccountsPerUser || 20;
+    const AccountRequestStore = require('../services/accountRequestStore');
+
+    const approvedCount = resolvedProfileId
+      ? TokenStore.countForProfile(resolvedProfileId)
+      : TokenStore.getAll().filter(a => a.owner === owner).length;
+
+    const pendingCount = resolvedProfileId
+      ? AccountRequestStore.countActiveForProfile(resolvedProfileId)
+      : AccountRequestStore.countPendingForOwner(owner);
+
+    const totalCount = approvedCount + pendingCount;
+
+    if (totalCount >= maxAccountsPerUser) {
+      logger.warn(`Account cap reached for ${owner} profile ${resolvedProfileId}: ${approvedCount} approved + ${pendingCount} pending = ${totalCount}/${maxAccountsPerUser}`);
       return res.redirect(`${FRONTEND}/?error=account_limit_reached`);
     }
 
     if (['admin', 'superadmin'].includes(ownerRole)) {
-      TokenStore.save(tokenData.email, tokenData, owner);
-      logger.info(`Account connected directly (admin): ${tokenData.email} (owner: ${owner})`);
+      TokenStore.save(tokenData.email, tokenData, owner, resolvedProfileId);
+      logger.info(`Account connected directly (admin): ${tokenData.email} (owner: ${owner}, profile: ${resolvedProfileId})`);
       return res.redirect(`${FRONTEND}/?connected=${encodeURIComponent(tokenData.email)}`);
     }
 
     // Regular user — create a pending request awaiting admin approval.
-    // FIX: Wrapped in its own try/catch so a DB error here redirects with a clear
-    // "request_create_failed" code instead of "token_exchange_failed" which wrongly
-    // implies something went wrong with Google — making the error very hard to diagnose.
     try {
-      AccountRequestStore.create(tokenData.email, tokenData, owner);
-      logger.info(`Account request created: ${tokenData.email} (owner: ${owner})`);
+      AccountRequestStore.create(tokenData.email, tokenData, owner, resolvedProfileId);
+      logger.info(`Account request created: ${tokenData.email} (owner: ${owner}, profile: ${resolvedProfileId})`);
       return res.redirect(`${FRONTEND}/?pending=${encodeURIComponent(tokenData.email)}`);
     } catch (storeErr) {
       logger.error('Failed to create account request', { email: tokenData.email, error: storeErr.message });
@@ -127,7 +147,16 @@ router.get('/google/callback', async (req, res) => {
 // GET /auth/accounts — list approved accounts visible to the current user
 router.get('/accounts', requireAuth, (req, res) => {
   try {
-    const accounts = TokenStore.getAllForUser(req.user.username, req.user.role);
+    const { username, role, activeProfileId } = req.user;
+    const isAdmin = ['admin', 'superadmin'].includes(role);
+    let accounts;
+    if (isAdmin) {
+      accounts = TokenStore.getAllForUser(username, role);
+    } else if (activeProfileId) {
+      accounts = TokenStore.getAllForProfile(activeProfileId);
+    } else {
+      accounts = TokenStore.getAllForUser(username, role);
+    }
     res.json({ success: true, accounts });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

@@ -82,10 +82,19 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_rh_email ON run_history(email);
   CREATE INDEX IF NOT EXISTS idx_rh_finished ON run_history(finished_at);
+  CREATE TABLE IF NOT EXISTS profiles (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    username     TEXT NOT NULL,
+    profile_name TEXT NOT NULL,
+    is_default   INTEGER NOT NULL DEFAULT 0,
+    created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    UNIQUE(username, profile_name)
+  );
+  CREATE INDEX IF NOT EXISTS idx_profiles_username ON profiles(username);
 `);
 
 // Default worker config
-[['concurrencyLimit','10'],['batchDelayMs','2000'],['emailJitterMs','0'],['batchSize','5'],['maxAccountsPerUser','10']].forEach(([k,v]) =>
+[['concurrencyLimit','10'],['batchDelayMs','2000'],['emailJitterMs','0'],['batchSize','5'],['maxAccountsPerUser','20'],['maxProfilesPerUser','5']].forEach(([k,v]) =>
   db.prepare('INSERT OR IGNORE INTO worker_config (key,value) VALUES (?,?)').run(k,v)
 );
 
@@ -167,6 +176,48 @@ for (const [role, perms] of Object.entries(DEFAULT_PERMS))
       db.exec("ALTER TABLE run_history ADD COLUMN stopped_early INTEGER NOT NULL DEFAULT 0");
       console.log('[DB] run_history migration complete.');
     }
+  })();
+
+  // Migration 4: add profile_id to accounts and account_requests
+  (function() {
+    const accCols = db.prepare("PRAGMA table_info(accounts)").all().map(c => c.name);
+    if (!accCols.includes('profile_id')) {
+      console.log('[DB] Migrating accounts: adding profile_id column...');
+      db.exec("ALTER TABLE accounts ADD COLUMN profile_id INTEGER REFERENCES profiles(id) ON DELETE SET NULL");
+      console.log('[DB] accounts migration complete.');
+    }
+    const reqCols = db.prepare("PRAGMA table_info(account_requests)").all().map(c => c.name);
+    if (!reqCols.includes('profile_id')) {
+      console.log('[DB] Migrating account_requests: adding profile_id column...');
+      db.exec("ALTER TABLE account_requests ADD COLUMN profile_id INTEGER REFERENCES profiles(id) ON DELETE SET NULL");
+      console.log('[DB] account_requests migration complete.');
+    }
+  })();
+
+  // Migration 5: auto-create Default profiles for all existing users
+  // and backfill profile_id on all orphaned accounts/requests
+  (function() {
+    const users = db.prepare("SELECT username FROM users").all();
+    for (const { username } of users) {
+      // Ensure default profile exists
+      let profile = db.prepare("SELECT * FROM profiles WHERE username=? AND is_default=1").get(username);
+      if (!profile) {
+        db.prepare(
+          "INSERT OR IGNORE INTO profiles (username, profile_name, is_default) VALUES (?, 'Default', 1)"
+        ).run(username);
+        profile = db.prepare("SELECT * FROM profiles WHERE username=? AND is_default=1").get(username);
+      }
+      if (!profile) continue;
+      // Backfill accounts that have no profile_id
+      db.prepare(
+        "UPDATE accounts SET profile_id=? WHERE owner=? AND profile_id IS NULL"
+      ).run(profile.id, username);
+      // Backfill account_requests
+      db.prepare(
+        "UPDATE account_requests SET profile_id=? WHERE owner=? AND profile_id IS NULL"
+      ).run(profile.id, username);
+    }
+    console.log('[DB] Profile backfill complete.');
   })();
 
   // Migration 3: fix timestamps stored without UTC 'Z' suffix by datetime('now').

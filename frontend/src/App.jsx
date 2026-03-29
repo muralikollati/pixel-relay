@@ -204,13 +204,22 @@ export default function App() {
 
   const handleLogin  = (userData) => { setAuthChecking(false); setUser(userData); setTab('dashboard'); };
   const handleLogout = async () => {
-    // FIX: Revoke the token server-side before clearing local state.
-    // The server adds it to a denylist so it can't be reused even if intercepted.
     await logoutApi();
     localStorage.removeItem('pr_token');
     localStorage.removeItem('pr_user');
     setUser(null);
     setAuthChecking(false);
+  };
+
+  // Profile switch — new JWT + user object returned from /users/profiles/:id/activate
+  const handleProfileSwitch = (updatedUser, newToken) => {
+    setUser(updatedUser);
+    localStorage.setItem('pr_user', JSON.stringify(updatedUser));
+    localStorage.setItem('pr_token', newToken);
+    // Stop any running worker before switching
+    if (worker?.running) worker.stopAll();
+    // Force stats refresh so accounts/dashboard update immediately
+    refetch();
   };
   const handleToastClose = (_, reason) => { if (reason === 'clickaway') return; setToastOpen(false); };
 
@@ -243,6 +252,7 @@ export default function App() {
           onToast={showToast} refetch={refetch}
           worker={worker} data={data}
           user={user} onLogout={handleLogout}
+          onProfileSwitch={handleProfileSwitch}
           pendingCount={pendingCount}
           ownerFilter={ownerFilter} setOwnerFilter={setOwnerFilter}
         />
