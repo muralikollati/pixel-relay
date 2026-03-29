@@ -14,6 +14,7 @@ const express    = require('express');
 const router     = express.Router();
 const TokenStore = require('../services/tokenStore');
 const ConfigStore = require('../services/configStore');
+const ProfileStore = require('../services/profileStore');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const RunHistoryStore = require('../services/runHistoryStore');
 
@@ -38,14 +39,35 @@ setInterval(purgeStale, 5 * 60 * 1000);
 // /account-requests/pending-count polling loop entirely.
 router.get('/stats', requireAuth, (req, res) => {
   try {
-    const { username, role } = req.user;
-    const accounts = TokenStore.getAllForUser(username, role);
+    const { username, role, activeProfileId } = req.user;
+    const isAdmin = ['admin', 'superadmin'].includes(role);
+
+    // Admins see all accounts; regular users see only their active profile's accounts
+    let accounts;
+    if (isAdmin) {
+      accounts = TokenStore.getAllForUser(username, role);
+    } else if (activeProfileId) {
+      accounts = TokenStore.getAllForProfile(activeProfileId);
+    } else {
+      accounts = TokenStore.getAllForUser(username, role);
+    }
+
     const active   = accounts.filter(a => a.status === 'active');
     const avgSuccess = active.length
       ? (active.reduce((s, a) => s + (a.stats?.successRate || 0), 0) / active.length).toFixed(1)
       : 0;
 
-    const isAdmin = ['admin', 'superadmin'].includes(role);
+    // Include profile info for the frontend
+    const profiles = !isAdmin ? ProfileStore.listForUser(username) : [];
+
+    const cfg             = ConfigStore.get();
+    const maxAccounts     = cfg.maxAccountsPerUser || 20;
+    const AccountRequestStore = require('../services/accountRequestStore');
+
+    // For regular users: count their pending requests for the active profile
+    const userPendingCount = !isAdmin && activeProfileId
+      ? AccountRequestStore.countActiveForProfile(activeProfileId)
+      : (!isAdmin ? AccountRequestStore.countPendingForOwner(username) : 0);
 
     res.json({
       success: true,
@@ -58,8 +80,12 @@ router.get('/stats', requireAuth, (req, res) => {
         warnings:       accounts.filter(a => ['warning', 'error'].includes(a.status)).length,
       },
       accounts,
-      // Only compute and expose pendingRequests for admin roles to avoid leaking info
-      pendingRequests: isAdmin ? require('../services/accountRequestStore').pendingCount() : 0,
+      profiles,
+      activeProfileId: activeProfileId || null,
+      maxAccountsPerUser: maxAccounts,
+      slotsUsed:          accounts.length + userPendingCount,
+      slotsRemaining:     Math.max(0, maxAccounts - accounts.length - userPendingCount),
+      pendingRequests: isAdmin ? AccountRequestStore.pendingCount() : userPendingCount,
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

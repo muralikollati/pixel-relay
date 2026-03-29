@@ -47,6 +47,7 @@ function rowToRequest(row, includeTokenData = false) {
   const out = {
     email:        row.email,
     owner:        row.owner,
+    profileId:    row.profile_id || null,
     status:       row.status,
     requestedAt:  row.requested_at,
     reviewedAt:   row.reviewed_at,
@@ -58,19 +59,20 @@ function rowToRequest(row, includeTokenData = false) {
 }
 
 const AccountRequestStore = {
-  create(email, tokenData, ownerUsername) {
+  create(email, tokenData, ownerUsername, profileId = null) {
     const existing = db.prepare('SELECT status FROM account_requests WHERE email = ?').get(email);
     if (existing?.status === 'pending') return rowToRequest(db.prepare('SELECT * FROM account_requests WHERE email = ?').get(email));
     const encData = encryptTokenData(tokenData);
     db.prepare(`
-      INSERT INTO account_requests (email, owner, tokens, status, requested_at)
-      VALUES (?, ?, ?, 'pending', datetime('now'))
+      INSERT INTO account_requests (email, owner, tokens, status, profile_id, requested_at)
+      VALUES (?, ?, ?, 'pending', ?, datetime('now'))
       ON CONFLICT(email) DO UPDATE SET
         tokens       = excluded.tokens,
         status       = 'pending',
+        profile_id   = excluded.profile_id,
         requested_at = datetime('now'),
         reviewed_at  = NULL, reviewed_by = NULL, reject_reason = NULL
-    `).run(email, ownerUsername, encData);
+    `).run(email, ownerUsername, encData, profileId);
     return rowToRequest(db.prepare('SELECT * FROM account_requests WHERE email = ?').get(email));
   },
 
@@ -138,6 +140,20 @@ const AccountRequestStore = {
 
   pendingCount() {
     return db.prepare("SELECT COUNT(*) as c FROM account_requests WHERE status='pending'").get().c;
+  },
+
+  // Count pending+rejected requests for a specific profile (for cap enforcement)
+  countActiveForProfile(profileId) {
+    return db.prepare(
+      "SELECT COUNT(*) as c FROM account_requests WHERE profile_id=? AND status IN ('pending')"
+    ).get(profileId).c;
+  },
+
+  // Count pending requests for a user across all profiles (fallback when no profileId)
+  countPendingForOwner(owner) {
+    return db.prepare(
+      "SELECT COUNT(*) as c FROM account_requests WHERE owner=? AND status='pending'"
+    ).get(owner).c;
   },
 };
 

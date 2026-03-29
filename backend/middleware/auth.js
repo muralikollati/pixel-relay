@@ -74,7 +74,7 @@ function isRevoked(decoded) {
 
 function generateToken(user) {
   return jwt.sign(
-    { username: user.username, role: user.role },
+    { username: user.username, role: user.role, activeProfileId: user.activeProfileId || null },
     SECRET,
     { expiresIn: '7d' }
   );
@@ -103,15 +103,21 @@ async function requireAuth(req, res, next) {
       return res.status(401).json({ error: 'Account no longer exists', deleted: true });
     }
 
-    // FIX: Always use the current role from the database, not the role embedded in
-    // the JWT. If an admin changed this user's role after the JWT was issued, the
-    // JWT's role field is stale. Using decoded.role would let the old role persist
-    // for up to 7 days (token lifetime) — causing users to see accounts/history
-    // belonging to other users, or ex-admins to retain admin access.
+    // Resolve activeProfileId — if not in token, fall back to the user's default profile
+    let activeProfileId = decoded.activeProfileId || null;
+    if (!activeProfileId) {
+      try {
+        const ProfileStore = require('../services/profileStore');
+        const defaultProfile = ProfileStore.ensureDefault(decoded.username);
+        activeProfileId = defaultProfile?.id || null;
+      } catch { /* non-fatal */ }
+    }
+
     req.user = {
       ...decoded,
-      role:        user.role,
-      permissions: UserStore.getPermissions(user.role),
+      role:            user.role,
+      permissions:     UserStore.getPermissions(user.role),
+      activeProfileId,
     };
 
     next();

@@ -21,8 +21,10 @@
 const express    = require('express');
 const router     = express.Router();
 const UserStore  = require('../services/userStore');
+const ProfileStore = require('../services/profileStore');
 const { generateToken, requireAuth, requireRole, requirePermission, revokeToken } = require('../middleware/auth');
 const logger     = require('../services/logger');
+const profileRoutes = require('./profiles');
 
 // ── Login ──────────────────────────────────────────────────────────────────────
 router.post('/login', async (req, res) => {
@@ -35,14 +37,21 @@ router.post('/login', async (req, res) => {
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-    const token       = generateToken(user);
+    // Ensure a default profile exists for the user (idempotent)
+    const defaultProfile = ProfileStore.ensureDefault(username);
+    const activeProfileId = defaultProfile?.id || null;
+
+    const token       = generateToken({ ...user, activeProfileId });
     const permissions = UserStore.getPermissions(user.role);
     logger.info(`User logged in: ${username} (${user.role})`);
-    res.json({ success: true, token, user: { ...user, permissions } });
+    res.json({ success: true, token, user: { ...user, permissions, activeProfileId } });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ── Profile sub-routes ─────────────────────────────────────────────────────────
+router.use('/profiles', profileRoutes);
 
 // ── Logout — server-side token revocation ──────────────────────────────────────
 // FIX: Previously this was described as "client-side token discard (stateless)".
@@ -62,7 +71,15 @@ router.get('/me', requireAuth, (req, res) => {
 
 // ── List users (canManageUsers permission) ──────────────────────────────────────
 router.get('/', ...requirePermission('canManageUsers'), (req, res) => {
-  res.json({ success: true, users: UserStore.listUsers() });
+  const users = UserStore.listUsers();
+  const TokenStore = require('../services/tokenStore');
+  // Annotate each user with profile and account counts for admin panel display
+  const enriched = users.map(u => ({
+    ...u,
+    profileCount: ProfileStore.countForUser(u.username),
+    accountCount: TokenStore.getAll().filter(a => a.owner === u.username).length,
+  }));
+  res.json({ success: true, users: enriched });
 });
 
 // ── Create user (canManageUsers permission) ─────────────────────────────────────
@@ -120,6 +137,33 @@ router.patch('/:username/role', ...requirePermission('canManageUsers'), (req, re
     res.json({ success: true, message: `${username} is now ${role}` });
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+// ── Self-service password change (any logged-in user) ─────────────────────────
+// Requires current password — users cannot change others' passwords via this route.
+router.patch('/me/password', requireAuth, async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: 'currentPassword and newPassword are required' });
+  }
+  if (newPassword.length < 8) {
+    return res.status(400).json({ error: 'New password must be at least 8 characters' });
+  }
+  if (currentPassword === newPassword) {
+    return res.status(400).json({ error: 'New password must be different from current password' });
+  }
+  try {
+    // Verify current password before allowing the change
+    const user = await UserStore.verifyLogin(req.user.username, currentPassword);
+    if (!user) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+    await UserStore.updatePassword(req.user.username, newPassword);
+    logger.info(`Password changed by user: ${req.user.username}`);
+    res.json({ success: true, message: 'Password updated successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
