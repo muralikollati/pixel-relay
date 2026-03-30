@@ -15,6 +15,7 @@ const router     = express.Router();
 const TokenStore = require('../services/tokenStore');
 const ConfigStore = require('../services/configStore');
 const ProfileStore = require('../services/profileStore');
+const tokenHealth = require('../services/tokenHealthService');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const RunHistoryStore = require('../services/runHistoryStore');
 
@@ -213,6 +214,18 @@ router.post('/stop-request', ...requireRole('admin', 'superadmin'), (req, res) =
   if (!activityMap[targetUser].stopRequests.includes(email))
     activityMap[targetUser].stopRequests.push(email);
   res.json({ success: true });
+});
+
+// ── Manual token health check (superadmin) ────────────────────────────────────
+// Triggers an immediate proactive refresh pass across all accounts.
+// Results are returned so the admin can see which accounts need reconnecting.
+router.post('/token-health', ...requireRole('admin', 'superadmin'), async (req, res) => {
+  try {
+    const results = await tokenHealth.runHealthCheck();
+    res.json({ success: true, results });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 module.exports = router;

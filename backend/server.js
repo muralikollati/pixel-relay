@@ -21,6 +21,7 @@ const gmailRoutes          = require('./routes/gmail');
 const accountRequestRoutes = require('./routes/accountRequests');
 const UserStore    = require('./services/userStore');
 const logger       = require('./services/logger');
+const tokenHealth  = require('./services/tokenHealthService');
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -180,11 +181,12 @@ async function start() {
   await UserStore.init();
   app.listen(PORT, () => {
     logger.info(`PixelRelay API running on http://localhost:${PORT}`);
-    // FIX: Never log credentials in production — log goes to stdout which may be
-    // captured by logging infrastructure (CloudWatch, Datadog, etc.)
     if (!IS_PRODUCTION) {
       logger.info(`[DEV ONLY] Default login — username: admin  password: ${process.env.DEFAULT_ADMIN_PASSWORD || 'admin123'}`);
     }
+    // Start background token health checker — keeps Gmail tokens alive
+    // and marks accounts that need reconnecting (INVALID_GRANT)
+    tokenHealth.start();
   });
 }
 
