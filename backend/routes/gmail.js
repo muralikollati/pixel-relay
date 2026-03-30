@@ -14,11 +14,28 @@ const router     = express.Router();
 const { requireAuth } = require('../middleware/auth');
 const { collectAllIds, fetchEmailContent, getAuthenticatedClient, markAsRead } = require('../services/gmailFetcher');
 const { rescueSpam }   = require('../services/spamRescuer');
+const { isInvalidGrant } = require('../services/googleAuth');
 const TokenStore       = require('../services/tokenStore');
 const ReportStore      = require('../services/reportStore');
 const RunHistoryStore  = require('../services/runHistoryStore');
 const { getQuotaUsage } = require('../services/rateLimiter');
 const logger           = require('../services/logger');
+
+// ── invalid_grant handler ─────────────────────────────────────────────────────
+// Uses HTTP 400 (not 401) to avoid triggering the frontend's global logout
+// interceptor. Returns needsReconnect:true so the frontend can show a clear
+// "reconnect this account" message instead of a generic error.
+function handleInvalidGrant(res, email, err) {
+  logger.warn(`[Gmail] invalid_grant for ${email} — marking error, reconnect required`, { error: err.message });
+  try { TokenStore.setStatus(email, 'error'); } catch {}
+  return res.status(400).json({
+    success:        false,
+    error:          'invalid_grant',
+    needsReconnect: true,
+    email,
+    message: `Gmail access for ${email} has been revoked or expired. Please disconnect and reconnect this account.`,
+  });
+}
 
 // ── Rescue spam for one account ───────────────────────────────────────────────
 router.post('/rescue/:email', requireAuth, async (req, res) => {
@@ -35,6 +52,7 @@ router.post('/rescue/:email', requireAuth, async (req, res) => {
     const rescued = await rescueSpam(email);
     res.json({ success: true, rescued });
   } catch (err) {
+    if (isInvalidGrant(err) || err.code === 'INVALID_GRANT') return handleInvalidGrant(res, email, err);
     logger.error(`rescueSpam failed for ${email}`, { error: err.message });
     res.status(500).json({ success: false, error: err.message });
   }
@@ -54,6 +72,7 @@ router.get('/unread/:email', requireAuth, async (req, res) => {
     const ids = await collectAllIds(email);
     res.json({ success: true, ids });
   } catch (err) {
+    if (isInvalidGrant(err) || err.code === 'INVALID_GRANT') return handleInvalidGrant(res, email, err);
     logger.error(`collectAllIds failed for ${email}`, { error: err.message });
     res.status(500).json({ success: false, error: err.message });
   }
@@ -75,6 +94,7 @@ router.get('/message/:email/:messageId', requireAuth, async (req, res) => {
     const content = await fetchEmailContent(email, gmail, messageId);
     res.json({ success: true, email: content });
   } catch (err) {
+    if (isInvalidGrant(err) || err.code === 'INVALID_GRANT') return handleInvalidGrant(res, email, err);
     logger.error(`fetchEmailContent failed ${messageId}`, { error: err.message });
     res.status(500).json({ success: false, error: err.message });
   }

@@ -185,6 +185,14 @@ export function useWorker({ onStatsUpdate, username } = {}) {
         spamRescued = r.data.rescued || 0;
         console.log(`${TAG} [${accountEmail}] Rescued: ${spamRescued}`);
       } catch (err) {
+        // invalid_grant during rescue — stop immediately, don't treat as non-fatal
+        if (err.response?.data?.needsReconnect || err.response?.data?.error === 'invalid_grant') {
+          console.warn(`${TAG} [${accountEmail}] invalid_grant during rescue — needs reconnect`);
+          setStatus(accountEmail, { phase: 'error', message: '⚠ Token expired — reconnect required', needsReconnect: true });
+          onStatsUpdate?.();
+          return;
+        }
+        // All other rescue errors are non-fatal — continue the run
         console.warn(`${TAG} [${accountEmail}] Spam rescue failed (non-fatal):`, err.message);
       }
 
@@ -202,7 +210,23 @@ export function useWorker({ onStatsUpdate, username } = {}) {
       // Phase 1: Collect IDs
       setStatus(accountEmail, { phase: 'fetching', message: 'Collecting unread emails...' });
       console.log(`${TAG} [${accountEmail}] Collecting unread IDs`);
-      const idsRes = await api.get(`/gmail/unread/${encodeURIComponent(accountEmail)}`);
+      let idsRes;
+      try {
+        idsRes = await api.get(`/gmail/unread/${encodeURIComponent(accountEmail)}`);
+      } catch (err) {
+        // Detect invalid_grant / token-revoked — backend already marked account as 'error'
+        if (err.response?.data?.needsReconnect || err.response?.data?.error === 'invalid_grant') {
+          const msg = '⚠ Token expired — reconnect required';
+          console.warn(`${TAG} [${accountEmail}] invalid_grant on collectIds — needs reconnect`);
+          setStatus(accountEmail, { phase: 'error', message: msg, needsReconnect: true });
+          onStatsUpdate?.(); // refresh account list so the card shows 'error' status immediately
+          // Throw a tagged error so the outer catch knows not to overwrite the status
+          const tagged = new Error(msg);
+          tagged.needsReconnect = true;
+          throw tagged;
+        }
+        throw err; // all other errors bubble to outer catch as before
+      }
       const allIds = idsRes.data.ids || [];
       console.log(`${TAG} [${accountEmail}] Found ${allIds.length} unread`);
 
@@ -294,7 +318,10 @@ export function useWorker({ onStatsUpdate, username } = {}) {
 
     } catch (err) {
       console.error(`${TAG} [${accountEmail}] FAILED:`, err);
-      setStatus(accountEmail, { phase: 'error', message: err.message });
+      // Don't overwrite the status if we already set a specific needsReconnect message above
+      if (!err.needsReconnect) {
+        setStatus(accountEmail, { phase: 'error', message: err.message });
+      }
     }
   }
 
