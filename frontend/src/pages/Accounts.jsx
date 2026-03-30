@@ -122,6 +122,24 @@ export default function Accounts({ data, refetch, onToast, worker, user, myActiv
                   </Typography>
                 )}
 
+                {/* Token expired / needs reconnect banner */}
+                {a.status === 'error' && (
+                  <Box sx={{ mb: 1.5, p: 1.25, bgcolor: 'rgba(239,68,68,0.08)', borderRadius: 1.5,
+                    border: '1px solid rgba(239,68,68,0.25)', display: 'flex', alignItems: 'center',
+                    justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
+                    <Typography sx={{ fontSize: 10, color: '#EF4444', flex: 1 }}>
+                      Token expired or revoked — reconnect this account
+                    </Typography>
+                    <Button size="small" onClick={connectGmail}
+                      sx={{ fontSize: 10, color: '#EF4444', bgcolor: 'rgba(239,68,68,0.1)',
+                        border: '1px solid rgba(239,68,68,0.3)', borderRadius: 1.5, py: 0.4, px: 1.25,
+                        textTransform: 'none', flexShrink: 0,
+                        '&:hover': { bgcolor: 'rgba(239,68,68,0.2)' } }}>
+                      Reconnect
+                    </Button>
+                  </Box>
+                )}
+
                 {/* Rate headline */}
                 <Typography sx={{ fontSize: isMobile ? 28 : 36, fontWeight: 800, color: rateColor(rate), lineHeight: 1, mb: 0.25 }}>
                   {rate}%
