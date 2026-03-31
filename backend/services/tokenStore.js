@@ -30,14 +30,22 @@ const TokenStore = {
       scope:         tokenData.scope,
     };
     const existing = db.prepare('SELECT stats, status, profile_id FROM accounts WHERE email=?').get(email);
+    // FIX: If the account was in 'error' state (e.g. token expired / invalid_grant),
+    // reconnecting should reset it back to 'active'. The ON CONFLICT clause only
+    // updates tokens — status was never cleared, so the account stayed 'error'
+    // permanently even after a successful reconnect.
+    const resolvedStatus = existing
+      ? (existing.status === 'error' ? 'active' : existing.status || 'active')
+      : 'active';
     db.prepare(`
       INSERT INTO accounts (email,owner,tokens,status,stats,profile_id,added_at,updated_at)
       VALUES (?,?,?,?,?,?,datetime('now'),datetime('now'))
       ON CONFLICT(email) DO UPDATE SET
         tokens=excluded.tokens, updated_at=datetime('now'),
+        status=CASE WHEN status='error' THEN 'active' ELSE status END,
         profile_id=COALESCE(excluded.profile_id, profile_id)
     `).run(email, ownerUsername||'admin', encryptTokens(tokenObj),
-       existing ? existing.status || 'active' : 'active',
+       resolvedStatus,
        existing ? existing.stats : JSON.stringify(DEFAULT_STATS),
        profileId || (existing ? existing.profile_id : null));
     return rowToAccount(db.prepare('SELECT * FROM accounts WHERE email=?').get(email));
