@@ -32,7 +32,7 @@ function fmt(iso) {
   return toUTC(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
 }
 
-export default function MyRequests({ onToast }) {
+export default function MyRequests({ onToast, data }) {
   const [requests, setRequests] = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [busy,     setBusy]     = useState({});
@@ -90,7 +90,7 @@ export default function MyRequests({ onToast }) {
               <RefreshIcon sx={{ fontSize: 16 }} />
             </IconButton>
           </Tooltip>
-          <Button variant="outlined" size="small" startIcon={<AddIcon sx={{ fontSize: 14 }} />} onClick={connectGmail}
+          <Button variant="outlined" size="small" startIcon={<AddIcon sx={{ fontSize: 14 }} />} onClick={connectGmail} disabled= {data?.slotsRemaining === 0}
             sx={{ borderColor: 'rgba(0,229,255,0.3)', color: '#00E5FF', fontSize: 11, py: 0.5, whiteSpace: 'nowrap',
               '&:hover': { borderColor: '#00E5FF', bgcolor: 'rgba(0,229,255,0.06)' } }}>
             Connect
