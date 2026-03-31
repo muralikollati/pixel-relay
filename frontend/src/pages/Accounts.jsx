@@ -93,8 +93,9 @@ export default function Accounts({ data, refetch, onToast, worker, user, myActiv
           const running   = isLiveRunning(live);
           const progress  = live.total ? Math.round((live.done / live.total) * 100) : 0;
           const isPaused  = a.status === 'paused';
+          const isError   = a.status === 'error';
           const rate      = a.stats?.successRate || 0;
-          const accentColor = running ? '#7C3AED' : rateColor(rate);
+          const accentColor = running ? '#7C3AED' : isError ? '#EF4444' : rateColor(rate);
 
           return (
             <Card key={a.email} sx={{
@@ -184,25 +185,28 @@ export default function Accounts({ data, refetch, onToast, worker, user, myActiv
                     </Button>
                   ) : (
                     <>
-                      <Tooltip title={isPaused ? 'Resume account first' : `Run ${a.email}`}>
+                      <Tooltip title={isPaused ? 'Resume account first' : isError ? 'Reconnect this account first' : `Run ${a.email}`}>
                         <span style={{ flex: 1 }}>
                           <Button fullWidth size="small" startIcon={<PlayArrowIcon sx={{ fontSize: 12 }} />}
-                            onClick={() => handleRun(a)} disabled={isPaused}
+                            onClick={() => handleRun(a)} disabled={isPaused || isError}
                             sx={{ fontSize: 10, color: '#00E5FF', bgcolor: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 1.5, py: 0.5, textTransform: 'none',
                               '&:hover': { bgcolor: 'rgba(0,229,255,0.15)' }, '&.Mui-disabled': { opacity: 0.3 } }}>
                             Run
                           </Button>
                         </span>
                       </Tooltip>
-                      <Button size="small"
-                        startIcon={isPaused ? <ReplayIcon sx={{ fontSize: 12 }} /> : <PauseIcon sx={{ fontSize: 12 }} />}
-                        onClick={() => setPauseTarget({ email: a.email, action: isPaused ? 'resume' : 'pause' })}
-                        sx={{ fontSize: 10, color: isPaused ? '#10B981' : '#F59E0B',
-                          bgcolor: isPaused ? 'rgba(16,185,129,0.08)' : 'rgba(245,158,11,0.08)',
-                          border: `1px solid ${isPaused ? 'rgba(16,185,129,0.25)' : 'rgba(245,158,11,0.25)'}`,
-                          borderRadius: 1.5, py: 0.5, px: 1, minWidth: 0, textTransform: 'none' }}>
-                        {isPaused ? 'Resume' : 'Pause'}
-                      </Button>
+                      {/* Hide pause/resume when account needs reconnect — reconnect banner handles it */}
+                      {!isError && (
+                        <Button size="small"
+                          startIcon={isPaused ? <ReplayIcon sx={{ fontSize: 12 }} /> : <PauseIcon sx={{ fontSize: 12 }} />}
+                          onClick={() => setPauseTarget({ email: a.email, action: isPaused ? 'resume' : 'pause' })}
+                          sx={{ fontSize: 10, color: isPaused ? '#10B981' : '#F59E0B',
+                            bgcolor: isPaused ? 'rgba(16,185,129,0.08)' : 'rgba(245,158,11,0.08)',
+                            border: `1px solid ${isPaused ? 'rgba(16,185,129,0.25)' : 'rgba(245,158,11,0.25)'}`,
+                            borderRadius: 1.5, py: 0.5, px: 1, minWidth: 0, textTransform: 'none' }}>
+                          {isPaused ? 'Resume' : 'Pause'}
+                        </Button>
+                      )}
                       <Tooltip title="Disconnect account">
                         <IconButton size="small" onClick={() => setDeleteTarget(a.email)}
                           sx={{ color: '#EF4444', bgcolor: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 1.5 }}>

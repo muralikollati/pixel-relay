@@ -49,6 +49,7 @@ import {
   resumeAccount,
   removeAccount,
   requestStop,
+  connectGmail,
 } from "../utils/api";
 import { useState, useEffect, useRef } from "react";
 
@@ -714,19 +715,17 @@ export default function Dashboard({
                           : 0;
 
                         // ── Action availability rules ──
-                        // STOP: enabled whenever this account is actively processing (any session)
-                        //       For remote runs, stopOne() sends stop signal via backend flag (future)
-                        //       For now: stop button only works for own-session runs
                         const canStop = isOwnRun && !runAllMode;
+                        const isError = a.status === 'error';
                         // RUN: only when account is idle AND no other session running it AND not run-all mode
                         const canRun =
                           !isActive &&
                           !running &&
+                          !isError &&
                           ["active", "warning"].includes(a.status);
-                        // PAUSE/RESUME: only when account is idle (not being processed by anyone)
-                        const canPause = !isActive;
+                        // PAUSE/RESUME: only when account is idle and not in error state
+                        const canPause = !isActive && !isError;
                         // DELETE: only when account is NOT actively processing by anyone
-                        // This is the key fix — disabled when ANY session is running this account
                         const canDelete = !isActive;
 
                         return (
@@ -974,54 +973,37 @@ export default function Dashboard({
                                   </Tooltip>
                                 )}
 
-                                {/* Pause / Resume — disabled when account is actively processing */}
-                                <Tooltip
-                                  title={
-                                    !canPause
-                                      ? isActive
-                                        ? "Stop the run first before pausing"
-                                        : ""
-                                      : ["active", "warning"].includes(a.status)
-                                        ? "Pause account"
-                                        : "Resume account"
-                                  }>
-                                  <span>
-                                    <IconButton
-                                      size="small"
-                                      onClick={() => handleToggle(a)}
-                                      disabled={!canPause}
-                                      sx={{
-                                        color: ["active", "warning"].includes(
-                                          a.status,
-                                        )
-                                          ? "#F59E0B"
-                                          : "#10B981",
-                                        bgcolor: ["active", "warning"].includes(
-                                          a.status,
-                                        )
-                                          ? "rgba(245,158,11,0.08)"
-                                          : "rgba(16,185,129,0.08)",
-                                        borderRadius: 1.5,
-                                        "&:hover": {
-                                          bgcolor: [
-                                            "active",
-                                            "warning",
-                                          ].includes(a.status)
-                                            ? "rgba(245,158,11,0.18)"
-                                            : "rgba(16,185,129,0.18)",
-                                        },
-                                        "&.Mui-disabled": { opacity: 0.3 },
-                                      }}>
-                                      {["active", "warning"].includes(
-                                        a.status,
-                                      ) ? (
-                                        <PauseIcon sx={{ fontSize: 14 }} />
-                                      ) : (
-                                        <ReplayIcon sx={{ fontSize: 14 }} />
-                                      )}
+                                {/* Pause / Resume / Reconnect */}
+                                {isError ? (
+                                  <Tooltip title="Token expired — reconnect this account">
+                                    <IconButton size="small" onClick={connectGmail}
+                                      sx={{ color: "#EF4444", bgcolor: "rgba(239,68,68,0.08)",
+                                        border: "1px solid rgba(239,68,68,0.25)", borderRadius: 1.5,
+                                        "&:hover": { bgcolor: "rgba(239,68,68,0.18)" } }}>
+                                      <ReplayIcon sx={{ fontSize: 14 }} />
                                     </IconButton>
-                                  </span>
-                                </Tooltip>
+                                  </Tooltip>
+                                ) : (
+                                  <Tooltip
+                                    title={
+                                      !canPause
+                                        ? isActive ? "Stop the run first before pausing" : ""
+                                        : ["active", "warning"].includes(a.status) ? "Pause account" : "Resume account"
+                                    }>
+                                    <span>
+                                      <IconButton size="small" onClick={() => handleToggle(a)} disabled={!canPause}
+                                        sx={{
+                                          color: ["active", "warning"].includes(a.status) ? "#F59E0B" : "#10B981",
+                                          bgcolor: ["active", "warning"].includes(a.status) ? "rgba(245,158,11,0.08)" : "rgba(16,185,129,0.08)",
+                                          borderRadius: 1.5,
+                                          "&:hover": { bgcolor: ["active", "warning"].includes(a.status) ? "rgba(245,158,11,0.18)" : "rgba(16,185,129,0.18)" },
+                                          "&.Mui-disabled": { opacity: 0.3 },
+                                        }}>
+                                        {["active", "warning"].includes(a.status) ? <PauseIcon sx={{ fontSize: 14 }} /> : <ReplayIcon sx={{ fontSize: 14 }} />}
+                                      </IconButton>
+                                    </span>
+                                  </Tooltip>
+                                )}
 
                                 {/* Delete — disabled whenever account is actively processing by ANYONE */}
                                 <Tooltip
@@ -1071,11 +1053,12 @@ export default function Dashboard({
                     const fromRemote = isActive && jobSt.fromRemote;
                     const isOwnRun = isActive && !fromRemote;
                     const progress = jobSt.total ? Math.round((jobSt.done / jobSt.total) * 100) : 0;
+                    const isError = a.status === "error";
                     const canStop = isOwnRun && !runAllMode;
-                    const canRun = !isActive && !running && ["active", "warning"].includes(a.status);
-                    const canPause = !isActive;
+                    const canRun = !isActive && !running && !isError && ["active", "warning"].includes(a.status);
+                    const canPause = !isActive && !isError;
                     const canDelete = !isActive;
-                    const accentColor = isActive ? (fromRemote ? "#00E5FF" : "#7C3AED") : rateColor(rate);
+                    const accentColor = isActive ? (fromRemote ? "#00E5FF" : "#7C3AED") : isError ? "#EF4444" : rateColor(rate);
 
                     return (
                       <Box key={a.email} sx={{
@@ -1174,6 +1157,15 @@ export default function Dashboard({
                                 "&:hover": { bgcolor: "rgba(55, 160, 56, 0.08)" }, "&.Mui-disabled": { opacity: 0.3 } }}>Run</Button>
                           )}
 
+                          {isError ? (
+                            <Button size="small" startIcon={<ReplayIcon sx={{ fontSize: 12 }} />}
+                              onClick={connectGmail}
+                              sx={{ flex: 1, fontSize: 10, color: "#EF4444", bgcolor: "rgba(239,68,68,0.08)",
+                                border: "1px solid rgba(239,68,68,0.25)", borderRadius: 1.5, py: 0.5, textTransform: "none",
+                                "&:hover": { bgcolor: "rgba(239,68,68,0.15)" } }}>
+                              Reconnect
+                            </Button>
+                          ) : (
                           <Button size="small"
                             startIcon={["active","warning"].includes(a.status) ? <PauseIcon sx={{ fontSize: 12 }} /> : <ReplayIcon sx={{ fontSize: 12 }} />}
                             onClick={() => handleToggle(a)} disabled={!canPause}
@@ -1184,6 +1176,7 @@ export default function Dashboard({
                               borderRadius: 1.5, py: 0.5, textTransform: "none", "&.Mui-disabled": { opacity: 0.3 } }}>
                             {["active","warning"].includes(a.status) ? "Pause" : "Resume"}
                           </Button>
+                          )}
 
                           <Tooltip title={!canDelete ? "Stop the run first" : "Disconnect"}>
                             <span>
