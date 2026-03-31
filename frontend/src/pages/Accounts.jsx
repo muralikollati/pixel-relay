@@ -222,14 +222,22 @@ export default function Accounts({ data, refetch, onToast, worker, user, myActiv
         })}
 
         {/* Add account card */}
-        <Card onClick={connectGmail} sx={{ border: '1px dashed rgba(0,229,255,0.2)', cursor: 'pointer',
-          '&:hover': { border: '1px dashed rgba(0,229,255,0.5)', bgcolor: 'rgba(0,229,255,0.02)' }, transition: 'all 0.2s' }}>
-          <CardContent sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: isMobile ? 100 : 140, gap: 1 }}>
-            <AddIcon sx={{ color: '#00E5FF', fontSize: 28, opacity: 0.5 }} />
-            <Typography sx={{ color: '#00E5FF', opacity: 0.7, fontSize: 12, fontWeight: 600 }}>Connect Gmail Account</Typography>
-            <Typography variant="caption" color="text.disabled" sx={{ textAlign: 'center', fontSize: 10 }}>
-              Submits a request for admin approval
-            </Typography>
+          <Card onClick={connectGmail} sx={{ border: '1px dashed rgba(0,229,255,0.2)', cursor: 'pointer',
+            '&:hover': { border: '1px dashed rgba(0,229,255,0.5)', bgcolor: 'rgba(0,229,255,0.02)' }, transition: 'all 0.2s' }}>
+            <CardContent sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: isMobile ? 100 : 140, gap: 1 }}>
+              {!isAdmin && data?.slotsRemaining === 0 ? (
+                <Typography sx={{ color: 'text.disabled', fontSize: 12, textAlign: 'center' }}>
+                  Account limit reached{!isAdmin && ' — ask your admin to approve pending requests'}
+                </Typography>
+              ) : (
+               <>
+                <AddIcon sx={{ color: '#00E5FF', fontSize: 28, opacity: 0.5 }} />
+                 <Typography sx={{ color: '#00E5FF', opacity: 0.7, fontSize: 12, fontWeight: 600 }}>Connect Gmail Account</Typography>
+                  <Typography variant="caption" color="text.disabled" sx={{ textAlign: 'center', fontSize: 10 }}>
+                   Submits a request for admin approval
+                  </Typography>
+               </>
+            )}
           </CardContent>
         </Card>
       </Box>
