@@ -222,7 +222,7 @@ export default function Accounts({ data, refetch, onToast, worker, user, myActiv
         })}
 
         {/* Add account card */}
-          <Card onClick={() => connectGmail(user?.activeProfileId)} sx={{ border: '1px dashed rgba(0,229,255,0.2)', cursor: 'pointer',
+          <Card onClick={() =>  !(!isAdmin && data?.slotsRemaining === 0) && connectGmail(user?.activeProfileId)} sx={{ border: '1px dashed rgba(0,229,255,0.2)', cursor: 'pointer',
             '&:hover': { border: '1px dashed rgba(0,229,255,0.5)', bgcolor: 'rgba(0,229,255,0.02)' }, transition: 'all 0.2s' }}>
             <CardContent sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: isMobile ? 100 : 140, gap: 1 }}>
               {!isAdmin && data?.slotsRemaining === 0 ? (

@@ -105,16 +105,22 @@ router.get('/google/callback', async (req, res) => {
     // Cap check: approved accounts + pending requests for this profile combined.
     // This prevents users from bypassing the cap by flooding the request queue
     // before any are approved.
+    //
+    // IMPORTANT: the cap is per-profile, not per-user-globally. Using a cross-profile
+    // count when resolvedProfileId is null would wrongly block a user from adding
+    // accounts to a fresh profile after filling another one. If resolvedProfileId is
+    // somehow null (shouldn't happen — ensureDefault() is called above), treat it as
+    // a fresh profile so we don't unfairly deny the request.
     const maxAccountsPerUser = require('../services/configStore').get().maxAccountsPerUser || 20;
     const AccountRequestStore = require('../services/accountRequestStore');
 
     const approvedCount = resolvedProfileId
       ? TokenStore.countForProfile(resolvedProfileId)
-      : TokenStore.getAll().filter(a => a.owner === owner).length;
+      : 0; // no profile resolved → treat as fresh; ensureDefault already ran above
 
     const pendingCount = resolvedProfileId
       ? AccountRequestStore.countActiveForProfile(resolvedProfileId)
-      : AccountRequestStore.countPendingForOwner(owner);
+      : 0;
 
     const totalCount = approvedCount + pendingCount;
 
