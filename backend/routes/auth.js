@@ -50,8 +50,9 @@ function verifyState(state) {
 // requirePermission handles admin/superadmin bypass + live permission check for users
 router.post('/google/init', ...requirePermission('canConnectAccounts'), (req, res) => {
   try {
-    // Encode username + active profile in the state param
-    const profileId = req.user.activeProfileId || null;
+    // Prefer explicitly passed profileId from request body over JWT activeProfileId.
+    // This ensures the correct profile is used when called from any page.
+    const profileId = req.body?.profileId || req.user.activeProfileId || null;
     const state = signState(req.user.username, profileId);
     const url   = getAuthUrl(state);
     res.json({ success: true, url });
@@ -104,16 +105,22 @@ router.get('/google/callback', async (req, res) => {
     // Cap check: approved accounts + pending requests for this profile combined.
     // This prevents users from bypassing the cap by flooding the request queue
     // before any are approved.
+    //
+    // IMPORTANT: the cap is per-profile, not per-user-globally. Using a cross-profile
+    // count when resolvedProfileId is null would wrongly block a user from adding
+    // accounts to a fresh profile after filling another one. If resolvedProfileId is
+    // somehow null (shouldn't happen — ensureDefault() is called above), treat it as
+    // a fresh profile so we don't unfairly deny the request.
     const maxAccountsPerUser = require('../services/configStore').get().maxAccountsPerUser || 20;
     const AccountRequestStore = require('../services/accountRequestStore');
 
     const approvedCount = resolvedProfileId
       ? TokenStore.countForProfile(resolvedProfileId)
-      : TokenStore.getAll().filter(a => a.owner === owner).length;
+      : 0; // no profile resolved → treat as fresh; ensureDefault already ran above
 
     const pendingCount = resolvedProfileId
       ? AccountRequestStore.countActiveForProfile(resolvedProfileId)
-      : AccountRequestStore.countPendingForOwner(owner);
+      : 0;
 
     const totalCount = approvedCount + pendingCount;
 

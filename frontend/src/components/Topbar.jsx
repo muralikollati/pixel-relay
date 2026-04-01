@@ -235,7 +235,7 @@ export default function Topbar({ tab, setTab, onToast, user, onLogout, onProfile
             <Tooltip title={isAtCap ? `Slot limit reached (${data.slotsUsed}/${data.maxAccountsPerUser} used including pending requests)` : ''}>
               <span>
                 <Button variant="outlined" size="small" startIcon={<AddIcon />}
-                  onClick={connectGmail} color="primary" disabled={isAtCap}
+                  onClick={() => connectGmail(user?.activeProfileId)} color="primary" disabled={isAtCap}
                   sx={{ borderColor: 'rgba(0,229,255,0.3)', display: { xs: 'none', sm: 'flex' },
                     '&.Mui-disabled': { borderColor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.2)' } }}>
                   {showSlot
@@ -320,7 +320,7 @@ export default function Topbar({ tab, setTab, onToast, user, onLogout, onProfile
               <Box sx={{ px: 2, pt: 2 }}>
                 <Button fullWidth variant="outlined" color="primary" startIcon={<AddIcon />}
                   disabled={isAtCap}
-                  onClick={() => { connectGmail(); setDrawer(false); }}>
+                  onClick={() => { connectGmail(user?.activeProfileId); setDrawer(false); }}>
                   {isAtCap
                     ? `Slots full (${data.slotsUsed}/${data.maxAccountsPerUser})`
                     : 'Connect Gmail'}

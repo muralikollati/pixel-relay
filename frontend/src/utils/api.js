@@ -56,8 +56,8 @@ export const updatePermissions = (role, perms)        => api.patch(`/users/permi
 // ── Gmail accounts ─────────────────────────────────────────────────────────────
 export const getStats    = ()      => api.get('/worker/stats');
 export const getAccounts = ()      => api.get('/auth/accounts');
-export const connectGmail = async () => {
-  const res = await api.post('/auth/google/init');
+export const connectGmail = async (profileId = null) => {
+  const res = await api.post('/auth/google/init', profileId ? { profileId } : {});
   window.location.href = res.data.url;
 };
 export const removeAccount = (email) => api.delete(`/auth/accounts/${encodeURIComponent(email)}`);

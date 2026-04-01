@@ -272,7 +272,7 @@ export default function App() {
           {tab === 'logs'             && <Logs             accountStatuses={worker.accountStatuses} />}
           {tab === 'reports'          && <Reports          onToast={showToast} />}
           {tab === 'run-history'      && <RunHistory       data={data} />}
-          {tab === 'my-requests'      && !isAdmin && <MyRequests onToast={showToast} data={data} />}
+          {tab === 'my-requests'      && !isAdmin && <MyRequests onToast={showToast} data={data} user={user} />}
           {tab === 'account-requests' && isAdmin  && <AccountRequests onToast={showToast} />}
           {tab === 'admin'            && isAdmin  && <AdminPanel onToast={showToast} user={user} />}
         </Box>

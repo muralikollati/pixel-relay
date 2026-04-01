@@ -65,10 +65,22 @@ router.get('/stats', requireAuth, (req, res) => {
     const maxAccounts     = cfg.maxAccountsPerUser || 20;
     const AccountRequestStore = require('../services/accountRequestStore');
 
-    // For regular users: count their pending requests for the active profile
+    // For regular users: count their pending requests for the active profile only.
     const userPendingCount = !isAdmin && activeProfileId
       ? AccountRequestStore.countActiveForProfile(activeProfileId)
       : (!isAdmin ? AccountRequestStore.countPendingForOwner(username) : 0);
+
+    // Slots must be scoped to the active profile, not the user globally.
+    // A user filling Profile A should still be able to add accounts to Profile B.
+    // Use a dedicated per-profile count so the `accounts` list (which may include
+    // all profiles for admins, or be the profile list for regular users) does not
+    // inflate the cap calculation.
+    const profileAccountCount = !isAdmin && activeProfileId
+      ? TokenStore.countForProfile(activeProfileId)
+      : accounts.length; // admins: no cap enforced in the UI
+
+    const slotsUsed      = profileAccountCount + userPendingCount;
+    const slotsRemaining = isAdmin ? null : Math.max(0, maxAccounts - slotsUsed);
 
     res.json({
       success: true,
@@ -84,8 +96,8 @@ router.get('/stats', requireAuth, (req, res) => {
       profiles,
       activeProfileId: activeProfileId || null,
       maxAccountsPerUser: maxAccounts,
-      slotsUsed:          accounts.length + userPendingCount,
-      slotsRemaining:     Math.max(0, maxAccounts - accounts.length - userPendingCount),
+      slotsUsed,
+      slotsRemaining,
       pendingRequests: isAdmin ? AccountRequestStore.pendingCount() : userPendingCount,
     });
   } catch (err) {
