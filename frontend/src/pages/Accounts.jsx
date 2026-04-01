@@ -131,7 +131,7 @@ export default function Accounts({ data, refetch, onToast, worker, user, myActiv
                     <Typography sx={{ fontSize: 10, color: '#EF4444', flex: 1 }}>
                       Token expired or revoked — reconnect this account
                     </Typography>
-                    <Button size="small" onClick={connectGmail}
+                    <Button size="small" onClick={() => connectGmail(user?.activeProfileId)}
                       sx={{ fontSize: 10, color: '#EF4444', bgcolor: 'rgba(239,68,68,0.1)',
                         border: '1px solid rgba(239,68,68,0.3)', borderRadius: 1.5, py: 0.4, px: 1.25,
                         textTransform: 'none', flexShrink: 0,
@@ -222,7 +222,7 @@ export default function Accounts({ data, refetch, onToast, worker, user, myActiv
         })}
 
         {/* Add account card */}
-          <Card onClick={connectGmail} sx={{ border: '1px dashed rgba(0,229,255,0.2)', cursor: 'pointer',
+          <Card onClick={() => connectGmail(user?.activeProfileId)} sx={{ border: '1px dashed rgba(0,229,255,0.2)', cursor: 'pointer',
             '&:hover': { border: '1px dashed rgba(0,229,255,0.5)', bgcolor: 'rgba(0,229,255,0.02)' }, transition: 'all 0.2s' }}>
             <CardContent sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: isMobile ? 100 : 140, gap: 1 }}>
               {!isAdmin && data?.slotsRemaining === 0 ? (

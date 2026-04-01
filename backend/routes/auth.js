@@ -50,8 +50,9 @@ function verifyState(state) {
 // requirePermission handles admin/superadmin bypass + live permission check for users
 router.post('/google/init', ...requirePermission('canConnectAccounts'), (req, res) => {
   try {
-    // Encode username + active profile in the state param
-    const profileId = req.user.activeProfileId || null;
+    // Prefer explicitly passed profileId from request body over JWT activeProfileId.
+    // This ensures the correct profile is used when called from any page.
+    const profileId = req.body?.profileId || req.user.activeProfileId || null;
     const state = signState(req.user.username, profileId);
     const url   = getAuthUrl(state);
     res.json({ success: true, url });
